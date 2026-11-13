@@ -1,0 +1,50 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+    paths: ["firmware/**", "tools/preview.cpp", ".github/workflows/firmware.yml"]
+  pull_request:
+    paths: ["firmware/**", "tools/preview.cpp", ".github/workflows/firmware.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install platformio esptool
+      - name: Unit tests (host)
+        run: pio test -e native
+      - name: Screen renderer compiles (host)
+        run: |
+          g++ -std=gnu++14 -O2 -Wall -Ilib/hm_core/src ../tools/preview.cpp \
+            lib/hm_core/src/gfx.cpp lib/hm_core/src/mechfont.cpp lib/hm_core/src/screens.cpp -o /tmp/preview
+          mkdir -p /tmp/screens && /tmp/preview /tmp/screens
+      - name: Build (M5Stack AtomS3R)
+        run: pio run -e atoms3r
+      - name: Merge binaries (flash at 0x0)
+        run: |
+          mkdir -p ../out
+          BOOT_APP0=~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
+          B=.pio/build/atoms3r
+          esptool.py --chip esp32s3 merge_bin -o ../out/CrealityHiMonitor-atoms3r-merged.bin \
+            0x0 $B/bootloader.bin 0x8000 $B/partitions.bin 0xe000 $BOOT_APP0 0x10000 $B/firmware.bin
+          cp $B/firmware.bin ../out/CrealityHiMonitor-atoms3r-app.bin
+      - uses: actions/upload-artifact@v7
+        with:
+          name: CrealityHiMonitor-firmware
+          path: out/*.bin

@@ -1,0 +1,13 @@
+{
+  "name": "hm_core",
+  "version": "0.1.0",
+  "description": "CrealityHiMonitor logic: Creality websocket and Moonraker parsing, ETA estimator, job/screen state, tilt filter, anti-aliased vector drawing, mech font and screens. Plain C++ with ArduinoJson, no Arduino headers, unit-tested on the host.",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "7.4.2"
+  },
+  "build": {
+    "flags": "-std=gnu++14"
+  }
+}

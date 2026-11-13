@@ -1,0 +1,25 @@
+# PlatformIO
+.pio/
+firmware/.pio/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Build outputs and logs
+*.bin
+*.elf
+*.map
+*.ppm
+*.log
+out/
+dist/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

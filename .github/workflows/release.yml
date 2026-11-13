@@ -1,0 +1,55 @@
+name: Release
+
+# A version tag (vX.Y.Z) reruns the firmware workflow (tests + build), then
+# publishes a GitHub release with the firmware images. The notes are the
+# tag's section of CHANGELOG.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  firmware:
+    uses: ./.github/workflows/firmware.yml
+
+  publish:
+    needs: [firmware]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          awk -v v="$ver" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            /^\[[^]]*\]: / { exit }
+            found
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no section for $ver" >&2
+            exit 1
+          fi
+          cat >> notes.md <<'EOF'
+
+          ### Downloads
+
+          | File | Contents |
+          |---|---|
+          | `CrealityHiMonitor-atoms3r-merged.bin` | firmware for the M5Stack AtomS3R, full image: write it at `0x0` |
+          | `CrealityHiMonitor-atoms3r-app.bin` | the application only: write it at `0x10000` over an existing install (keeps the settings) |
+
+          Flash: `esptool.py --chip esp32s3 write_flash 0x0 CrealityHiMonitor-atoms3r-merged.bin`
+          EOF
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: CrealityHiMonitor ${{ steps.notes.outputs.ver }}
+          body_path: notes.md
+          files: dist/CrealityHiMonitor-firmware/*.bin
