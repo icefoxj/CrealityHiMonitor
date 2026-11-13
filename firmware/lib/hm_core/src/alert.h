@@ -46,10 +46,14 @@ public:
     AlertKind kind() const { return kind_; }
 
     // The button: stop the alert
-    void acknowledge() { kind_ = AlertKind::None; }
+    void acknowledge() { kind_ = AlertKind::None; test_ = false; }
 
     // Starts an alert now (also used by the tests)
     AlertKind trigger(AlertKind k, uint32_t nowMs);
+
+    // The console's "alert" test: starts an alert whatever the screen shows.
+    // It runs its whole course (flash, repeats) unless acknowledged, then ends.
+    AlertKind test(AlertKind k, uint32_t nowMs);
 
 private:
     static bool live(Screen s){ return s == Screen::Printing || s == Screen::Paused; }
@@ -59,6 +63,7 @@ private:
     AlertKind kind_      = AlertKind::None;
     uint32_t  startMs_   = 0;
     int       rounds_    = 0;   // melodies played in this alert
+    bool      test_      = false;   // started by test(): the screen does not end it
 };
 
 // Steps through a melody without blocking: call next() each frame; it

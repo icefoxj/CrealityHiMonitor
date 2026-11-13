@@ -15,7 +15,8 @@
 //   volume <0-255>               alert volume (saved)
 //   buzzer <gpio>|off            piezo buzzer pin, when there is no Echo Base (saved)
 //   beep                         play the "job done" sound (a speaker test)
-//   setup                        open the Wi-Fi setup portal
+//   alert done|attention|off     run an alert now, flash and sound (a test), or stop it
+//   setup                       open the Wi-Fi setup portal
 //   wifi reset                   forget the Wi-Fi network and reboot into setup
 //   reboot
 
@@ -36,6 +37,7 @@ enum class Cmd {
     Volume,      // value = 0..255
     Buzzer,      // value = GPIO, -1 = off
     Beep,
+    Alert,       // value = 1 done, 2 attention, 0 off (the AlertKind values)
     Setup,
     WifiReset,
     Reboot,
@@ -54,7 +56,7 @@ struct Command {
     int   sign      = 1;
     bool  hasOffset = false;
     float offsetDeg = 0.0f;
-    // bright, sound, volume, buzzer
+    // bright, sound, volume, buzzer, alert
     int   value  = 0;
 };
 

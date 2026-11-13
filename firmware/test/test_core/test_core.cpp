@@ -523,6 +523,15 @@ void test_console_commands(void){
     c = parseCommand("buzzer off");
     TEST_ASSERT_EQUAL(-1, c.value);
     TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Beep), static_cast<int>(parseCommand("beep").kind));
+    c = parseCommand("alert Done");
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Alert), static_cast<int>(c.kind));
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Done), c.value);
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Attention), parseCommand("alert attention").value);
+    c = parseCommand("alert off");
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Alert), static_cast<int>(c.kind));
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::None), c.value);
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::BadArgs), static_cast<int>(parseCommand("alert").kind));
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::BadArgs), static_cast<int>(parseCommand("alert loud").kind));
 }
 
 void test_line_reader(void){
@@ -714,6 +723,34 @@ void test_alert_attention_and_acknowledge(void){
     TEST_ASSERT_FALSE(a.active(100300));
 }
 
+// The console's "alert" test runs mid-print, on a screen that would end a real alert
+void test_alert_console_test(void){
+    Alerts a;
+    a.update(screenView(Screen::Printing), 0);
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Done), static_cast<int>(a.test(AlertKind::Done, 1000)));
+    int chimes = 1;
+    for (uint32_t t = 1000; t < 1000 + Alerts::kDoneFlashMs - 33; t += 33){
+        if (a.update(screenView(Screen::Printing), t) == AlertKind::Done) chimes++;
+        TEST_ASSERT_TRUE(a.active(t));
+    }
+    TEST_ASSERT_EQUAL(Alerts::kDoneRounds, chimes);
+    a.update(screenView(Screen::Printing), 1000 + Alerts::kDoneFlashMs + 1);
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::None), static_cast<int>(a.kind()));
+
+    // Attention, stopped by "alert off" (= the button)
+    a.test(AlertKind::Attention, 200000);
+    a.update(screenView(Screen::Printing), 200033);
+    TEST_ASSERT_TRUE(a.active(200033));
+    a.acknowledge();
+    TEST_ASSERT_FALSE(a.active(200066));
+
+    // A real end during a test takes over and ends with the DONE screen as usual
+    a.test(AlertKind::Attention, 300000);
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Done), static_cast<int>(a.update(screenView(Screen::Done), 300033)));
+    a.update(screenView(Screen::Idle), 300066);
+    TEST_ASSERT_FALSE(a.active(300099));
+}
+
 void test_melody_player(void){
     MelodyPlayer p;
     p.start(melodyFor(AlertKind::Done), 0);
@@ -771,6 +808,7 @@ int main(int, char**){
     RUN_TEST(test_alert_done_after_print_with_repeats);
     RUN_TEST(test_alert_none_for_stop_or_boot_into_done);
     RUN_TEST(test_alert_attention_and_acknowledge);
+    RUN_TEST(test_alert_console_test);
     RUN_TEST(test_melody_player);
     RUN_TEST(test_alert_view_flashes);
     return UNITY_END();

@@ -5,11 +5,12 @@ A live print monitor for the **Creality Hi**, on an **M5Stack AtomS3R**. The 24 
 ![HM-01 on an AtomS3R, upright and tilted](docs/img/hero.png)
 
 > **Status: v0.1.0, first release.**
-> - The firmware's logic passes 28 unit tests on the host.
+> - The firmware's logic passes 29 unit tests on the host.
 > - The parser and the ETA are checked against a real 2.5 h print on a Creality Hi, replayed in the tests.
 > - On an AtomS3R it boots, reads the IMU and answers the console. The tilt angle matched claude-monitor's in the same position.
-> - **The live link works on hardware:** setup from a phone, Wi-Fi join, printer search, and steady data from a Creality Hi mid-print (fixes in [Unreleased](CHANGELOG.md)).
-> - **Not yet checked on hardware:** the end-of-job alert.
+> - **The live link works on hardware:** setup from a phone, Wi-Fi join, printer search, and steady data from a Creality Hi mid-print.
+> - **The alert flash works on hardware**, run from the console (`alert done`).
+> - **Not yet seen on hardware:** an alert raised by a real job end, and the alert sounds.
 > - Every image here is rendered by the firmware's own drawing code.
 
 ## What it shows
@@ -82,7 +83,7 @@ The printer and the AtomS3R must be on the same network. HM-01 reads one stock i
 
 ### Prebuilt binary
 
-Every CI run builds the firmware: open the latest green run of the **Firmware** workflow in the [Actions tab](https://github.com/icefoxj/CrealityHiMonitor/actions) and download the `CrealityHiMonitor-firmware` artifact. Tagged versions also go to [Releases](https://github.com/icefoxj/CrealityHiMonitor/releases). Write `CrealityHiMonitor-atoms3r-merged.bin` at `0x0`:
+Download `CrealityHiMonitor-atoms3r-merged.bin` from the [latest release](https://github.com/icefoxj/CrealityHiMonitor/releases/latest). Builds of the newest `main` are in the `CrealityHiMonitor-firmware` artifact of the latest green **Firmware** run in the [Actions tab](https://github.com/icefoxj/CrealityHiMonitor/actions). Write the merged image at `0x0`:
 
 ```bash
 pip install esptool
@@ -138,6 +139,7 @@ Any serial terminal at 115200 baud on the USB port (`pio device monitor`):
 | `sound on\|off`, `volume <0-255>` | alert sound, saved |
 | `buzzer <gpio>` / `buzzer off` | piezo buzzer pin when there is no Echo Base, saved |
 | `beep` | play the "job done" chime (a speaker test) |
+| `alert done` / `alert attention` / `alert off` | run a whole alert now, flash and sound, to check it / stop it |
 | `setup` | open the setup portal |
 | `wifi reset` | forget the Wi-Fi network and reboot into setup |
 | `version`, `reboot`, `help` | |
@@ -166,6 +168,8 @@ If the dial is not upright on yours, calibrate it from the console:
 | Job cancelled (STOP) | no alert: you did it | none |
 
 A click on the button silences an alert.
+
+To see one without waiting for a job to end, run `alert done` (or `alert attention`) on the console. It plays out in full whatever the screen shows: the flash, and the sound if a speaker is fitted. `alert off` or a click stops it.
 
 **Sound.** The AtomS3R has no speaker. HM-01 plays the alerts on either:
 

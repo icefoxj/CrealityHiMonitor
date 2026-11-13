@@ -29,6 +29,13 @@ AlertKind Alerts::trigger(AlertKind k, uint32_t nowMs){
     kind_    = k;
     startMs_ = nowMs;
     rounds_  = k == AlertKind::None ? 0 : 1;
+    test_    = false;
+    return k;
+}
+
+AlertKind Alerts::test(AlertKind k, uint32_t nowMs){
+    trigger(k, nowMs);
+    test_ = k != AlertKind::None;
     return k;
 }
 
@@ -46,12 +53,20 @@ AlertKind Alerts::update(const View& v, uint32_t nowMs){
             start = AlertKind::Attention;
         }
     }
-    // The state that raised the alert is gone: stop it
-    if (kind_ == AlertKind::Done && s != Screen::Done){
-        kind_ = AlertKind::None;
-    }
-    if (kind_ == AlertKind::Attention && !(s == Screen::Error || (s == Screen::Paused && err))){
-        kind_ = AlertKind::None;
+    if (test_){
+        // A console test ends with its flash (the repeats fall inside it)
+        if (!active(nowMs)){
+            kind_ = AlertKind::None;
+            test_ = false;
+        }
+    } else {
+        // The state that raised the alert is gone: stop it
+        if (kind_ == AlertKind::Done && s != Screen::Done){
+            kind_ = AlertKind::None;
+        }
+        if (kind_ == AlertKind::Attention && !(s == Screen::Error || (s == Screen::Paused && err))){
+            kind_ = AlertKind::None;
+        }
     }
     last_ = s;
     lastErr_ = err;

@@ -34,17 +34,20 @@ From the original request (2026-11-13):
 
 ## Current phase: v0.1.0, first steps on hardware
 
-- 28 host tests pass. The estimator test replays a real 2.5 h print from the user's Hi.
+- 29 host tests pass. The estimator test replays a real 2.5 h print from the user's Hi.
 - The screens are rendered on the PC with the same code.
 - **Flashed on the user's AtomS3R (2026-11-13).** That unit normally runs claude-monitor: ask before flashing it.
   - Seen working: boot, setup portal, console, IMU. The angle matched claude-monitor's in the same position.
   - **Live link seen working (2026-11-13):**
-    - The portal worked from a phone, after the fixes in `[Unreleased]`.
+    - The portal worked from a phone, after the portal, search and link fixes now in v0.1.0.
     - HM-01 joined the user's Wi-Fi, the search found the Hi, and the data held steady mid-print.
+  - **Alert flash seen working (2026-11-13)** with the console's `alert done`, mid-print.
   - Not yet checked:
-    - the alert;
+    - an alert raised by a real job end;
+    - the alert sounds (no Echo Base or buzzer fitted);
     - frame time while turning;
     - the colours.
+- **v0.1.0 released (2026-11-13).**
 
 ## Commands
 

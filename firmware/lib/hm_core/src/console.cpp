@@ -87,6 +87,16 @@ Command parseCommand(const char* line){
         c.kind = Cmd::Sound;
         return c;
     }
+    if (strcmp(w, "alert") == 0){
+        char a[16];
+        word(r, a, sizeof(a));
+        if (strcmp(a, "done") == 0) c.value = 1;
+        else if (strcmp(a, "attention") == 0) c.value = 2;
+        else if (strcmp(a, "off") == 0) c.value = 0;
+        else { usage(c, "alert done|attention|off"); return c; }
+        c.kind = Cmd::Alert;
+        return c;
+    }
     if (strcmp(w, "volume") == 0){
         char a[16];
         word(r, a, sizeof(a));

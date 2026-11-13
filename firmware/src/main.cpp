@@ -226,6 +226,7 @@ void sendHelp(){
         "  calibrate rot=<0-3> sign=<1|-1> offset=<deg> | calibrate reset\n"
         "  bright <0-255>\n"
         "  sound on|off | volume <0-255> | buzzer <gpio>|off | beep\n"
+        "  alert done|attention|off  run an alert now (a test) / stop it\n"
         "  setup                 open the Wi-Fi setup portal\n"
         "  wifi reset            forget the Wi-Fi network and reboot\n"
         "  reboot\n");
@@ -290,6 +291,24 @@ void handleCommand(const hm::Command& c){
             Serial.printf("OK beep output=%s%s\n", sound::describe(),
                           settings::get().muted ? " (muted)" : "");
             break;
+        case hm::Cmd::Alert: {
+            const hm::AlertKind k = static_cast<hm::AlertKind>(c.value);
+            if (k == hm::AlertKind::None){
+                g_alerts.acknowledge();
+                sound::stop();
+                Serial.println("OK alert off");
+                break;
+            }
+            // pollConsole() runs before loop() reads the frame's millis(), so
+            // this stamp is not newer than the time the alert is checked with
+            g_alerts.test(k, millis());
+            sound::play(k);
+            Serial.printf("OK alert=%s for %lu s output=%s%s\n", k == hm::AlertKind::Done ? "done" : "attention",
+                          static_cast<unsigned long>((k == hm::AlertKind::Done ? hm::Alerts::kDoneFlashMs
+                                                                               : hm::Alerts::kAttentionMs) / 1000),
+                          sound::describe(), settings::get().muted ? " (muted)" : "");
+            break;
+        }
         case hm::Cmd::Setup:
             net::startPortal();
             Serial.printf("OK portal AP=%s password=%s\n", net::info().apName, net::info().apPass);
