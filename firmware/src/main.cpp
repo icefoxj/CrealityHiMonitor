@@ -2,8 +2,8 @@
 //
 // The 128x128 panel shows a fixed bezel and a round HUD that turns with
 // the cube (accelerometer, smoothed: the claude-monitor AtomS3R pattern).
-// Data comes from the printer's Creality websocket (port 9999) and, for
-// the slicer's M73 progress, Moonraker (port 7125). See README.md.
+// Data comes from the printer's Creality websocket (port 9999). See
+// README.md.
 //
 // Board-independent logic (parsing, ETA, screens, drawing, tilt filter,
 // console parser) is in lib/hm_core and tested on the host; this file wires
@@ -16,6 +16,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "alert.h"
 #include "config.h"
 #include "console.h"
 #include "eta.h"
@@ -24,6 +25,7 @@
 #include "net.h"
 #include "screens.h"
 #include "settings.h"
+#include "sound.h"
 #include "tilt.h"
 
 namespace {
@@ -43,6 +45,7 @@ hm::Estimator  g_estimator;
 hm::Estimate   g_estimate;
 hm::JobView    g_job;
 hm::LineReader g_reader;
+hm::Alerts     g_alerts;
 
 hm::View g_drawn;
 bool     g_haveDrawn = false;
@@ -162,14 +165,17 @@ void render(const hm::View& v){
 
 // ---------------------------------------------------------------- backlight
 
-void updateBacklight(const hm::View& v, uint32_t nowS){
+void updateBacklight(const hm::View& v, uint32_t nowS, bool alert){
     if (v.screen == hm::Screen::Idle){
         if (g_idleSince == 0) g_idleSince = nowS;
     } else {
         g_idleSince = 0;
     }
     uint8_t want;
-    switch (g_lamp){
+    if (alert){
+        // An alert lights the screen, even if it was dimmed or off
+        want = settings::get().brightness < kBrightness ? kBrightness : settings::get().brightness;
+    } else switch (g_lamp){
         case Lamp::Off: want = 0; break;
         case Lamp::Dim: want = kDimBrightness; break;
         default:
@@ -190,19 +196,19 @@ void updateBacklight(const hm::View& v, uint32_t nowS){
 void sendStatus(){
     const net::Info& ni = net::info();
     const hm::PrinterStatus& ps = net::printer();
-    const hm::MoonrakerStatus* m = net::moonraker();
     const Settings& s = settings::get();
     Serial.printf("STATUS fw=%s link=%s wifi=%s ip=%s printer=%s%s phase=%s state=%d file_pct=%d"
-                  " left=%ld job=%ld layer=%d/%d m73=%.3f pct=%d eta_left=%ld ratio=%.2f"
+                  " left=%ld job=%ld layer=%d/%d pct=%d eta_left=%ld total=%ld%s"
                   " screen=%s angle=%.1f rot=%u sign=%d offset=%.1f ax=%.2f ay=%.2f az=%.2f"
-                  " tz=%s heap=%u msgs=%lu\n",
+                  " tz=%s sound=%s%s alert=%d heap=%u msgs=%lu\n",
                   FW_VERSION, net::linkName(ni.link), ni.ssid[0] ? ni.ssid : "-", ni.ip[0] ? ni.ip : "-",
                   ni.printer[0] ? ni.printer : "-", s.printerAuto ? "(found)" : "",
                   hm::phaseName(hm::phaseOf(ps)), ps.state, ps.progress,
                   static_cast<long>(ps.leftS), static_cast<long>(ps.jobS), ps.layer, ps.layers,
-                  m ? m->m73 : -1.0f, g_estimate.percent, static_cast<long>(g_estimate.remainingS),
-                  g_estimate.ratio, hm::screenName(g_drawn.screen), g_tilt.angle * 180.0f / kPi,
+                  g_estimate.percent, static_cast<long>(g_estimate.remainingS),
+                  static_cast<long>(g_estimator.total()), g_estimate.overrun ? "(overrun)" : "", hm::screenName(g_drawn.screen), g_tilt.angle * 180.0f / kPi,
                   s.rotation, s.sign < 0 ? -1 : 1, s.offsetDeg, g_ax, g_ay, g_az, s.tz,
+                  sound::describe(), s.muted ? "(muted)" : "", static_cast<int>(g_alerts.kind()),
                   static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned long>(ni.messages));
 }
 
@@ -219,6 +225,7 @@ void sendHelp(){
         "  tz <POSIX TZ>         time zone, e.g. tz WET0WEST,M3.5.0/1,M10.5.0\n"
         "  calibrate rot=<0-3> sign=<1|-1> offset=<deg> | calibrate reset\n"
         "  bright <0-255>\n"
+        "  sound on|off | volume <0-255> | buzzer <gpio>|off | beep\n"
         "  setup                 open the Wi-Fi setup portal\n"
         "  wifi reset            forget the Wi-Fi network and reboot\n"
         "  reboot\n");
@@ -258,6 +265,30 @@ void handleCommand(const hm::Command& c){
             g_lamp = Lamp::Bright;
             g_brightness = 0xFF;   // re-apply
             Serial.printf("OK bright=%d\n", c.value);
+            break;
+        case hm::Cmd::Sound:
+            settings::setMuted(c.value == 0);
+            if (c.value == 0) sound::stop();
+            Serial.printf("OK sound=%s output=%s\n", c.value ? "on" : "off", sound::describe());
+            break;
+        case hm::Cmd::Volume:
+            settings::setVolume(static_cast<uint8_t>(c.value));
+            sound::reconfigure();
+            Serial.printf("OK volume=%d\n", c.value);
+            break;
+        case hm::Cmd::Buzzer:
+            if (c.value >= 0 && !sound::validBuzzerPin(c.value)){
+                Serial.println("ERROR buzzer: use a free pin: 1 2 (Grove), 5 6 7 8 38 39 (bottom), or off");
+                break;
+            }
+            settings::setBuzzerPin(static_cast<int8_t>(c.value));
+            sound::reconfigure();
+            Serial.printf("OK output=%s\n", sound::describe());
+            break;
+        case hm::Cmd::Beep:
+            sound::play(hm::AlertKind::Done);   // a sound test: the screen does not change
+            Serial.printf("OK beep output=%s%s\n", sound::describe(),
+                          settings::get().muted ? " (muted)" : "");
             break;
         case hm::Cmd::Setup:
             net::startPortal();
@@ -306,6 +337,11 @@ void pollButton(const hm::View& v){
         return;
     }
     if (M5.BtnA.wasClicked()){
+        if (v.alert){
+            g_alerts.acknowledge();
+            sound::stop();
+            return;
+        }
         // On an end screen the first press dismisses it, then the lamp cycles
         if (g_job.ended() && (v.screen == hm::Screen::Done || v.screen == hm::Screen::Stopped
                               || v.screen == hm::Screen::Error)){
@@ -323,6 +359,7 @@ void pollButton(const hm::View& v){
 
 void setup(){
     auto cfg = M5.config();
+    sound::prepare(cfg);   // looks for an Atomic Echo Base
     M5.begin(cfg);
     Serial.begin(115200);
 
@@ -330,6 +367,7 @@ void setup(){
     applyCalibration();
     setenv("TZ", settings::get().tz, 1);
     tzset();
+    sound::begin();
 
     g_fb   = static_cast<hm::Color*>(heap_caps_malloc(hm::kScreenSize * hm::kScreenSize * sizeof(hm::Color),
                                                       MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
@@ -359,6 +397,7 @@ void setup(){
     g_brightness = settings::get().brightness;
 
     sendVersion();
+    Serial.printf("sound: %s\n", sound::describe());
     Serial.printf("imu %s, rotation %u, sign %d, offset %.1f (%s)\n", g_imu ? "enabled" : "absent",
                   settings::get().rotation, settings::get().sign < 0 ? -1 : 1, settings::get().offsetDeg,
                   settings::get().calStored ? "from nvs" : "compiled");
@@ -392,13 +431,23 @@ void loop(){
     const uint32_t ms = millis();
     const uint32_t nowS = ms / 1000;
     if (net::info().link == net::Link::Online){
-        g_estimate = g_estimator.update(net::printer(), net::moonraker());
+        g_estimate = g_estimator.update(net::printer());
         g_job.update(net::printer(), g_estimate, nowS, epochNow());
     }
 
-    const hm::View v = buildView(ms);
+    hm::View v = buildView(ms);
+    const hm::AlertKind cue = g_alerts.update(v, ms);
+    if (cue != hm::AlertKind::None){
+        sound::play(cue);
+        Serial.printf("alert: %s\n", cue == hm::AlertKind::Done ? "job done" : "attention");
+    }
+    if (g_alerts.active(ms)){
+        v.alert = true;
+        v.blink = static_cast<uint8_t>(((ms / 250) & 1) + 1);   // flash at 2 Hz
+    }
+    sound::loop();
     pollButton(v);
-    updateBacklight(v, nowS);
+    updateBacklight(v, nowS, v.alert);
 
     if (g_brightness == 0){
         g_haveDrawn = false;   // redraw when it comes back on

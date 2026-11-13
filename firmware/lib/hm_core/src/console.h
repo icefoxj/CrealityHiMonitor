@@ -11,6 +11,10 @@
 //   calibrate rot=<0-3> sign=<1|-1> offset=<deg>   orientation (saved)
 //   calibrate reset              back to the compiled defaults
 //   bright <0-255>               backlight (saved)
+//   sound on|off                 alert sounds (saved)
+//   volume <0-255>               alert volume (saved)
+//   buzzer <gpio>|off            piezo buzzer pin, when there is no Echo Base (saved)
+//   beep                         play the "job done" sound (a speaker test)
 //   setup                        open the Wi-Fi setup portal
 //   wifi reset                   forget the Wi-Fi network and reboot into setup
 //   reboot
@@ -28,6 +32,10 @@ enum class Cmd {
     Tz,          // arg = POSIX TZ string
     Calibrate,
     Bright,
+    Sound,       // value = 1 on, 0 off
+    Volume,      // value = 0..255
+    Buzzer,      // value = GPIO, -1 = off
+    Beep,
     Setup,
     WifiReset,
     Reboot,
@@ -46,7 +54,7 @@ struct Command {
     int   sign      = 1;
     bool  hasOffset = false;
     float offsetDeg = 0.0f;
-    // bright
+    // bright, sound, volume, buzzer
     int   value  = 0;
 };
 

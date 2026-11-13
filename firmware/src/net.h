@@ -1,8 +1,8 @@
 #pragma once
 
-// Wi-Fi (with a setup portal), the printer search, the Creality websocket
-// and the Moonraker poll. net::loop() runs in the main loop; the search and
-// the Moonraker poll run in their own tasks because they block.
+// Wi-Fi (with a setup portal), the printer search and the Creality
+// websocket. net::loop() runs in the main loop; the search runs in its own
+// task because it blocks.
 
 #include <stdint.h>
 
@@ -30,7 +30,6 @@ struct Info {
     char     apPass[12]  = "";
     int      scanAt      = 0;    // search progress, host number 1..254
     bool     scanFailed  = false;
-    bool     moonraker   = false;   // Moonraker answered recently
     uint32_t messages    = 0;    // websocket messages received
     uint32_t reconnects  = 0;
 };
@@ -44,7 +43,5 @@ void usePrinter(const char* host);   // "" = search the network
 
 const Info& info();
 const hm::PrinterStatus& printer();
-// Latest Moonraker reply, or null when Moonraker is not answering
-const hm::MoonrakerStatus* moonraker();
 
 }  // namespace net

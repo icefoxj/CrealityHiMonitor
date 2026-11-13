@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unity.h>
 
+#include "alert.h"
 #include "console.h"
 #include "eta.h"
 #include "gfx.h"
@@ -31,11 +32,6 @@ static const char* kSnapshot =
     "\"printJobTime\": 3918, \"printLeftTime\": 5148, \"printProgress\": 16, \"state\": 1, "
     "\"targetBedTemp0\": 60, \"targetNozzleTemp\": 220, \"features\": [ \"printSettings.filamentRemaining\" ] }";
 
-// Moonraker /printer/objects/query reply from the same printer
-static const char* kMoonraker =
-    "{\"result\": {\"eventtime\": 1485043.08, \"status\": {\"display_status\": {\"progress\": 0.39}, "
-    "\"print_stats\": {\"state\": \"printing\", \"print_duration\": 3899.26}}}}";
-
 static PrinterStatus printing(int jobS, int leftS, int progress = 20, int layer = 30){
     PrinterStatus s;
     s.seen = true;
@@ -46,14 +42,6 @@ static PrinterStatus printing(int jobS, int leftS, int progress = 20, int layer 
     s.layer = layer;
     s.layers = 148;
     return s;
-}
-
-static MoonrakerStatus m73(float p, const char* state = "printing"){
-    MoonrakerStatus m;
-    m.valid = true;
-    m.m73 = p;
-    strcpy(m.state, state);
-    return m;
 }
 
 // ---------------------------------------------------------------- printer
@@ -128,79 +116,251 @@ void test_phase_codes(void){
     TEST_ASSERT_EQUAL(static_cast<int>(Phase::Preparing), static_cast<int>(phaseOf(s)));
 }
 
-void test_moonraker_parse(void){
-    MoonrakerStatus m;
-    TEST_ASSERT_TRUE(parseMoonraker(m, kMoonraker, strlen(kMoonraker)));
-    TEST_ASSERT_TRUE(m.valid);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.39f, m.m73);
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, 3899.26f, m.printS);
-    TEST_ASSERT_EQUAL_STRING("printing", m.state);
-    TEST_ASSERT_FALSE(parseMoonraker(m, "{\"error\":1}", 11));
-}
-
 // ---------------------------------------------------------------- estimator
 
-void test_estimate_fallback_without_moonraker(void){
-    Estimator e;
-    Estimate r = e.update(printing(3918, 5148, 16), nullptr);
-    TEST_ASSERT_EQUAL(16, r.percent);
-    TEST_ASSERT_EQUAL(5148, r.remainingS);
-    TEST_ASSERT_FALSE(r.fromM73);
-}
+// A real job on the Creality Hi (2026-11-13), every 30 s from 1 h 7 min in:
+// printJobTime, printLeftTime, printProgress, layer. Slicer estimate
+// 9067 s; the printer reported "complete" at printJobTime 9230.
+struct LogRow {
+    int job, left, fileProgress, layer;
+};
+static const LogRow kRealJob[] = {
+    {4018, 5049, 18, 17},
+    {4048, 5019, 18, 17},
+    {4078, 4988, 18, 18},
+    {4108, 4958, 19, 19},
+    {4138, 4928, 19, 19},
+    {4169, 4898, 19, 20},
+    {4199, 4868, 20, 21},
+    {4229, 4837, 20, 21},
+    {4260, 4807, 21, 22},
+    {4290, 4777, 21, 23},
+    {4320, 4746, 21, 23},
+    {4350, 4716, 22, 24},
+    {4381, 4686, 22, 25},
+    {4411, 4656, 23, 26},
+    {4441, 4625, 23, 26},
+    {4471, 4595, 23, 27},
+    {4502, 4565, 24, 27},
+    {4532, 4534, 24, 28},
+    {4562, 4504, 25, 29},
+    {4592, 4474, 25, 29},
+    {4623, 4444, 25, 30},
+    {4653, 4414, 26, 31},
+    {4683, 4383, 26, 31},
+    {4714, 4353, 26, 32},
+    {4744, 4323, 27, 33},
+    {4774, 4293, 28, 33},
+    {4804, 4262, 28, 34},
+    {4834, 4232, 29, 34},
+    {4865, 4202, 29, 35},
+    {4895, 4172, 30, 36},
+    {4925, 4141, 30, 37},
+    {4955, 4111, 31, 38},
+    {4985, 4081, 31, 38},
+    {5016, 4051, 32, 39},
+    {5046, 4021, 32, 40},
+    {5076, 3991, 32, 41},
+    {5106, 3961, 33, 41},
+    {5137, 3930, 33, 42},
+    {5167, 3899, 34, 43},
+    {5197, 3869, 34, 44},
+    {5228, 3839, 35, 45},
+    {5258, 3809, 35, 45},
+    {5288, 3779, 35, 46},
+    {5318, 3748, 36, 47},
+    {5348, 3718, 36, 48},
+    {5379, 3688, 37, 48},
+    {5409, 3658, 37, 49},
+    {5439, 3628, 38, 50},
+    {5469, 3597, 38, 50},
+    {5499, 3567, 38, 51},
+    {5530, 3537, 39, 52},
+    {5560, 3506, 40, 53},
+    {5591, 3476, 40, 53},
+    {5621, 3446, 41, 54},
+    {5651, 3415, 41, 55},
+    {5681, 3385, 42, 55},
+    {5711, 3355, 42, 56},
+    {5742, 3325, 42, 57},
+    {5772, 3295, 43, 58},
+    {5802, 3264, 43, 59},
+    {5832, 3234, 44, 59},
+    {5863, 3204, 44, 60},
+    {5893, 3174, 45, 61},
+    {5923, 3143, 45, 62},
+    {5954, 3113, 46, 62},
+    {5984, 3083, 46, 63},
+    {6014, 3052, 47, 64},
+    {6045, 3022, 47, 65},
+    {6075, 2992, 48, 65},
+    {6105, 2961, 48, 66},
+    {6135, 2931, 49, 67},
+    {6165, 2901, 49, 68},
+    {6196, 2871, 50, 68},
+    {6226, 2840, 50, 69},
+    {6256, 2810, 51, 70},
+    {6287, 2780, 51, 71},
+    {6317, 2750, 51, 71},
+    {6347, 2719, 52, 72},
+    {6377, 2690, 52, 73},
+    {6408, 2659, 53, 74},
+    {6438, 2628, 54, 74},
+    {6468, 2598, 54, 75},
+    {6499, 2568, 55, 76},
+    {6529, 2538, 55, 76},
+    {6559, 2508, 56, 77},
+    {6589, 2478, 57, 78},
+    {6620, 2447, 57, 79},
+    {6650, 2417, 58, 79},
+    {6680, 2386, 58, 80},
+    {6710, 2356, 59, 81},
+    {6741, 2326, 59, 81},
+    {6771, 2296, 60, 82},
+    {6801, 2265, 61, 83},
+    {6831, 2235, 61, 84},
+    {6862, 2205, 62, 84},
+    {6892, 2175, 62, 85},
+    {6922, 2144, 63, 86},
+    {6952, 2114, 63, 87},
+    {6983, 2084, 64, 87},
+    {7013, 2054, 65, 88},
+    {7043, 2023, 65, 89},
+    {7073, 1993, 66, 90},
+    {7103, 1963, 66, 91},
+    {7134, 1933, 67, 92},
+    {7164, 1902, 67, 92},
+    {7194, 1872, 68, 93},
+    {7225, 1842, 68, 94},
+    {7255, 1812, 69, 95},
+    {7285, 1782, 69, 96},
+    {7315, 1751, 70, 97},
+    {7346, 1721, 70, 97},
+    {7376, 1691, 71, 98},
+    {7406, 1661, 71, 99},
+    {7436, 1630, 72, 100},
+    {7467, 1600, 72, 101},
+    {7497, 1570, 73, 101},
+    {7527, 1539, 73, 102},
+    {7557, 1509, 74, 103},
+    {7588, 1479, 74, 104},
+    {7618, 1449, 75, 104},
+    {7648, 1418, 75, 105},
+    {7678, 1388, 76, 106},
+    {7708, 1358, 76, 107},
+    {7739, 1328, 77, 108},
+    {7769, 1298, 77, 108},
+    {7799, 1267, 78, 109},
+    {7830, 1237, 78, 110},
+    {7860, 1207, 79, 111},
+    {7890, 1177, 79, 111},
+    {7920, 1146, 79, 112},
+    {7951, 1116, 80, 113},
+    {7981, 1086, 80, 114},
+    {8011, 1055, 80, 115},
+    {8041, 1025, 81, 116},
+    {8072, 995, 81, 117},
+    {8102, 964, 82, 118},
+    {8132, 934, 82, 118},
+    {8163, 904, 82, 119},
+    {8193, 874, 83, 120},
+    {8223, 843, 83, 121},
+    {8253, 813, 83, 122},
+    {8283, 783, 84, 123},
+    {8314, 753, 84, 124},
+    {8344, 722, 85, 125},
+    {8374, 692, 85, 126},
+    {8404, 662, 85, 126},
+    {8435, 632, 86, 127},
+    {8465, 602, 86, 128},
+    {8495, 572, 86, 129},
+    {8525, 541, 87, 130},
+    {8556, 511, 87, 131},
+    {8586, 481, 87, 132},
+    {8616, 450, 88, 133},
+    {8646, 420, 88, 133},
+    {8677, 390, 89, 134},
+    {8707, 360, 89, 135},
+    {8737, 330, 90, 136},
+    {8767, 299, 90, 137},
+    {8797, 269, 91, 138},
+    {8828, 239, 91, 139},
+    {8858, 209, 91, 139},
+    {8888, 178, 92, 140},
+    {8918, 148, 93, 140},
+    {8949, 118, 94, 140},
+    {8979, 88, 95, 140},
+    {9009, 58, 96, 140},
+    {9039, 27, 98, 140},
+    {9069, 96, 98, 141},
+    {9100, 70, 99, 143},
+    {9130, 53, 99, 144},
+    {9160, 30, 99, 146},
+    {9190, 1, 99, 148},
+    {9216, 0, 100, 148},
+};
+static const int kRealJobEnd = 9230;
 
-void test_estimate_m73_before_history_is_slicer(void){
+void test_estimate_real_job(void){
     Estimator e;
-    const MoonrakerStatus m = m73(0.39f);
-    Estimate r = e.update(printing(3918, 5148), &m);
-    TEST_ASSERT_TRUE(r.fromM73);
-    TEST_ASSERT_EQUAL(39, r.percent);
-    // T = 9066 s; no measured ratio yet: T * (1 - 0.39)
-    TEST_ASSERT_INT_WITHIN(2, 5530, r.remainingS);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, r.ratio);
-}
-
-void test_estimate_learns_slower_printer(void){
-    // Slicer total 10000 s; the printer takes 140 s per 1 % instead of 100
-    Estimator e;
-    const int T = 10000;
-    Estimate r;
-    for (int t = 0; t <= 2800; t += 10){
-        const float p = 0.10f + 0.01f * (t / 140);
-        const MoonrakerStatus m = m73(p);
-        r = e.update(printing(1000 + t, T - (1000 + t)), &m);
+    int checked = 0;
+    for (const LogRow& r : kRealJob){
+        PrinterStatus s = printing(r.job, r.left, r.fileProgress, r.layer);
+        const Estimate est = e.update(s);
+        const int trueLeft = kRealJobEnd - r.job;
+        const int truePct = 100 * r.job / kRealJobEnd;
+        // Time left within 3 % of the whole job, percent within 3 points
+        TEST_ASSERT_INT_WITHIN_MESSAGE(kRealJobEnd * 3 / 100, trueLeft, est.remainingS, "time left");
+        TEST_ASSERT_INT_WITHIN_MESSAGE(3, truePct, est.percent, "percent");
+        checked++;
     }
-    TEST_ASSERT_FLOAT_WITHIN(0.03f, 1.4f, r.ratio);
-    // p = 0.30 reached at t = 2800: 70 % left at 140 s per % = 9800 s
-    TEST_ASSERT_INT_WITHIN(300, 9800, r.remainingS);
-    TEST_ASSERT_EQUAL(30, r.percent);
+    TEST_ASSERT_TRUE(checked > 60);
+}
+
+void test_estimate_overrun_uses_file_tail(void){
+    Estimator e;
+    e.update(printing(9000, 67, 97));
+    Estimate r = e.update(printing(9100, 0, 98));
+    TEST_ASSERT_TRUE(r.overrun);
+    TEST_ASSERT_EQUAL(99, r.percent);
+    TEST_ASSERT_INT_WITHIN(5, 9100 * 2 / 98, r.remainingS);
+    r = e.update(printing(9200, 0, 100));
+    TEST_ASSERT_EQUAL(0, r.remainingS);
+}
+
+void test_estimate_heating_uses_printer_numbers(void){
+    Estimator e;
+    PrinterStatus s = printing(-1, -1, 0, 0);
+    Estimate r = e.update(s);
+    TEST_ASSERT_EQUAL(0, r.percent);
+    TEST_ASSERT_EQUAL(-1, r.remainingS);
+    r = e.update(printing(30, 9030, 0, 0));
+    TEST_ASSERT_EQUAL(0, r.percent);
+    TEST_ASSERT_EQUAL(9030, r.remainingS);
 }
 
 void test_estimate_holds_while_paused(void){
     Estimator e;
-    Estimate before;
-    for (int t = 0; t <= 1500; t += 10){
-        const MoonrakerStatus m = m73(0.2f + 0.01f * (t / 100));
-        before = e.update(printing(2000 + t, 8000 - t), &m);
-    }
-    PrinterStatus paused = printing(3600, 6000);
+    const Estimate before = e.update(printing(3000, 6000, 20));
+    PrinterStatus paused = printing(3500, 5500, 20);
     paused.state = 5;
-    const MoonrakerStatus m = m73(0.35f, "paused");
-    Estimate r = e.update(paused, &m);
+    const Estimate r = e.update(paused);
     TEST_ASSERT_EQUAL(before.remainingS, r.remainingS);
     TEST_ASSERT_EQUAL(before.percent, r.percent);
+    const Estimate resumed = e.update(printing(3510, 5490, 21));
+    TEST_ASSERT_EQUAL(5490, resumed.remainingS);
 }
 
-void test_estimate_resets_on_new_job(void){
+void test_estimate_new_job_and_idle(void){
     Estimator e;
-    for (int t = 0; t <= 1500; t += 10){
-        const MoonrakerStatus m = m73(0.5f + 0.01f * (t / 200));
-        e.update(printing(5000 + t, 5000 - t), &m);
-    }
-    const MoonrakerStatus m = m73(0.01f);
-    Estimate r = e.update(printing(60, 3000), &m);
-    TEST_ASSERT_EQUAL(1, r.percent);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, r.ratio);
-    TEST_ASSERT_INT_WITHIN(40, 3030, r.remainingS);
+    e.update(printing(8000, 1000, 90));
+    Estimate r = e.update(printing(10, 4990, 0, 1));   // the next job
+    TEST_ASSERT_EQUAL(0, r.percent);
+    TEST_ASSERT_EQUAL(5000, e.total());
+    PrinterStatus idle = printing(0, 0, 0);
+    idle.state = 0;
+    e.update(idle);
+    TEST_ASSERT_EQUAL(-1, e.total());
 }
 
 // ---------------------------------------------------------------- job view
@@ -350,6 +510,19 @@ void test_console_commands(void){
     TEST_ASSERT_EQUAL(static_cast<int>(Cmd::BadArgs), static_cast<int>(parseCommand("bright 300").kind));
     TEST_ASSERT_EQUAL(static_cast<int>(Cmd::WifiReset), static_cast<int>(parseCommand("wifi reset").kind));
     TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Unknown), static_cast<int>(parseCommand("fly away").kind));
+    c = parseCommand("sound off");
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Sound), static_cast<int>(c.kind));
+    TEST_ASSERT_EQUAL(0, c.value);
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::BadArgs), static_cast<int>(parseCommand("sound maybe").kind));
+    c = parseCommand("volume 200");
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Volume), static_cast<int>(c.kind));
+    TEST_ASSERT_EQUAL(200, c.value);
+    c = parseCommand("buzzer 2");
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Buzzer), static_cast<int>(c.kind));
+    TEST_ASSERT_EQUAL(2, c.value);
+    c = parseCommand("buzzer off");
+    TEST_ASSERT_EQUAL(-1, c.value);
+    TEST_ASSERT_EQUAL(static_cast<int>(Cmd::Beep), static_cast<int>(parseCommand("beep").kind));
 }
 
 void test_line_reader(void){
@@ -487,6 +660,89 @@ void test_view_equality(void){
     TEST_ASSERT_TRUE(a != c);
 }
 
+
+// ---------------------------------------------------------------- alerts
+
+static View screenView(Screen s, int err = 0){
+    View v;
+    v.screen = s;
+    v.errorCode = err;
+    return v;
+}
+
+void test_alert_done_after_print_with_repeats(void){
+    Alerts a;
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::None), static_cast<int>(a.update(screenView(Screen::Printing), 0)));
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Done), static_cast<int>(a.update(screenView(Screen::Done), 1000)));
+    TEST_ASSERT_TRUE(a.active(2000));
+    int chimes = 1;
+    for (uint32_t t = 1000; t < 200000; t += 33){
+        if (a.update(screenView(Screen::Done), t) == AlertKind::Done) chimes++;
+    }
+    TEST_ASSERT_EQUAL(Alerts::kDoneRounds, chimes);
+    TEST_ASSERT_FALSE(a.active(1000 + Alerts::kDoneFlashMs + 1));
+}
+
+void test_alert_none_for_stop_or_boot_into_done(void){
+    Alerts a;
+    a.update(screenView(Screen::Printing), 0);
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::None), static_cast<int>(a.update(screenView(Screen::Stopped), 10)));
+    Alerts b;
+    b.update(screenView(Screen::Linking), 0);
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::None), static_cast<int>(b.update(screenView(Screen::Done), 10)));
+    TEST_ASSERT_FALSE(b.active(20));
+}
+
+void test_alert_attention_and_acknowledge(void){
+    Alerts a;
+    a.update(screenView(Screen::Printing), 0);
+    a.update(screenView(Screen::Paused), 100);   // the user paused: no alert
+    TEST_ASSERT_FALSE(a.active(200));
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Attention),
+                      static_cast<int>(a.update(screenView(Screen::Paused, 2839), 300)));   // run-out
+    TEST_ASSERT_TRUE(a.active(400));
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Attention),
+                      static_cast<int>(a.update(screenView(Screen::Paused, 2839), 300 + Alerts::kRepeatMs)));
+    a.acknowledge();
+    TEST_ASSERT_FALSE(a.active(300 + Alerts::kRepeatMs + 1));
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::None),
+                      static_cast<int>(a.update(screenView(Screen::Paused, 2839), 300 + 2 * Alerts::kRepeatMs)));
+    // Resumed, then the job fails
+    a.update(screenView(Screen::Printing), 100000);
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertKind::Attention), static_cast<int>(a.update(screenView(Screen::Error), 100100)));
+    a.update(screenView(Screen::Idle), 100200);   // dismissed on the printer
+    TEST_ASSERT_FALSE(a.active(100300));
+}
+
+void test_melody_player(void){
+    MelodyPlayer p;
+    p.start(melodyFor(AlertKind::Done), 0);
+    Note n;
+    int notes = 0;
+    uint32_t t = 0;
+    for (; t < 5000 && p.playing(); t += 10){
+        if (p.next(t, &n)){
+            notes++;
+            TEST_ASSERT_TRUE(n.hz > 0 && n.ms > 0);
+        }
+    }
+    TEST_ASSERT_EQUAL(8, notes);   // two runs of four notes, rests skipped
+    TEST_ASSERT_FALSE(p.playing());
+    TEST_ASSERT_TRUE(t < 3000);
+    TEST_ASSERT_NULL(melodyFor(AlertKind::None));
+}
+
+void test_alert_view_flashes(void){
+    View v;
+    v.screen = Screen::Done;
+    TEST_ASSERT_FALSE(animates(v));
+    v.alert = true;
+    TEST_ASSERT_TRUE(animates(v));
+    View w = v;
+    w.alert = false;
+    TEST_ASSERT_TRUE(v != w);
+}
+
 int main(int, char**){
     UNITY_BEGIN();
     RUN_TEST(test_snapshot_fields);
@@ -494,12 +750,11 @@ int main(int, char**){
     RUN_TEST(test_heartbeat_and_garbage);
     RUN_TEST(test_error_code);
     RUN_TEST(test_phase_codes);
-    RUN_TEST(test_moonraker_parse);
-    RUN_TEST(test_estimate_fallback_without_moonraker);
-    RUN_TEST(test_estimate_m73_before_history_is_slicer);
-    RUN_TEST(test_estimate_learns_slower_printer);
+    RUN_TEST(test_estimate_real_job);
+    RUN_TEST(test_estimate_overrun_uses_file_tail);
+    RUN_TEST(test_estimate_heating_uses_printer_numbers);
     RUN_TEST(test_estimate_holds_while_paused);
-    RUN_TEST(test_estimate_resets_on_new_job);
+    RUN_TEST(test_estimate_new_job_and_idle);
     RUN_TEST(test_job_done_latch);
     RUN_TEST(test_job_missed_end_state);
     RUN_TEST(test_job_abort_and_new_job);
@@ -513,5 +768,10 @@ int main(int, char**){
     RUN_TEST(test_stroke_has_no_seams);
     RUN_TEST(test_hud_rotation_matches_pixel_rotation);
     RUN_TEST(test_view_equality);
+    RUN_TEST(test_alert_done_after_print_with_repeats);
+    RUN_TEST(test_alert_none_for_stop_or_boot_into_done);
+    RUN_TEST(test_alert_attention_and_acknowledge);
+    RUN_TEST(test_melody_player);
+    RUN_TEST(test_alert_view_flashes);
     return UNITY_END();
 }

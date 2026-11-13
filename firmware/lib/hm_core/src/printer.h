@@ -1,12 +1,9 @@
 #pragma once
 
-// What the printer tells us, from two sources on the Creality Hi:
-//
-// - Creality's own LAN websocket, ws://<printer>:9999/ (what Creality Print
-//   uses). It sends a full JSON snapshot on connect, then only the fields
-//   that changed, several times a second. See docs/creality-websocket.md.
-// - Moonraker's HTTP API on port 7125 (Klipper), polled for the slicer's
-//   M73 progress, which the websocket does not carry.
+// What the printer tells us: Creality's own LAN websocket,
+// ws://<printer>:9999/ (what Creality Print uses). It sends a full JSON
+// snapshot on connect, then only the fields that changed, several times a
+// second. See docs/creality-websocket.md.
 //
 // Plain C++ and ArduinoJson: no Arduino headers, tested on the host.
 
@@ -56,17 +53,5 @@ bool applyCrealityMessage(PrinterStatus& st, const char* data, size_t len, bool*
 
 Phase phaseOf(const PrinterStatus& st);
 
-// Moonraker /printer/objects/query?print_stats&display_status reply
-struct MoonrakerStatus {
-    bool  valid      = false;
-    float m73        = -1.0f;   // display_status.progress, 0..1 (slicer M73 while printing)
-    float printS     = -1.0f;   // print_stats.print_duration (excludes pauses)
-    char  state[12]  = "";      // print_stats.state: standby printing paused complete cancelled error
-};
-
-bool parseMoonraker(MoonrakerStatus& out, const char* data, size_t len);
-
-// The query path the firmware polls
-extern const char* const kMoonrakerQuery;
 
 }  // namespace hm

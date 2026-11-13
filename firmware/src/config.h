@@ -12,7 +12,6 @@ constexpr const char* kUnitCode = "HM-01";
 
 // ---- printer
 constexpr uint16_t kCrealityPort  = 9999;   // Creality LAN websocket
-constexpr uint16_t kMoonrakerPort = 7125;   // Klipper API, for the slicer's M73 progress
 
 // Creality Print reconnects after 20 s without a message; so do we
 constexpr uint32_t kSilenceReconnectMs = 20000;
@@ -22,9 +21,6 @@ constexpr uint32_t kWsReconnectMs = 3000;
 // No data for this long (or never connected for this long): OFFLINE screen
 constexpr uint32_t kOfflineAfterMs = 12000;
 
-constexpr uint32_t kMoonrakerPollMs     = 10000;   // while a job runs
-constexpr uint32_t kMoonrakerIdlePollMs = 30000;
-constexpr uint32_t kMoonrakerStaleMs    = 45000;   // older than this: not used
 
 // Network search for the printer (when no address is set): the /24 of our
 // own address, one TCP connect per host on port 9999

@@ -402,8 +402,10 @@ void job(Canvas& cv, const View& v){
     }
     const bool live = v.screen == Screen::Printing;
     const int pct = v.screen == Screen::Done ? 100 : v.percent;
-    progressRing(cv, pct, c, live, v.blink);
-    band(cv, title, c, !blinkTitle || (v.blink & 1) || v.blink == 0);
+    // Alert: ring and band flash white
+    const bool flash = v.alert && (v.blink & 1);
+    progressRing(cv, pct, flash ? pal::text : c, live, v.blink);
+    band(cv, title, flash ? pal::text : c, v.alert || !blinkTitle || (v.blink & 1) || v.blink == 0);
 
     bigPercent(cv, pct, 4.0f);
     rule(cv, 10.5f, c);
@@ -455,10 +457,13 @@ bool View::operator==(const View& o) const {
         && layer == o.layer && layers == o.layers && nozzle == o.nozzle && bed == o.bed
         && heating == o.heating && errorCode == o.errorCode
         && strcmp(line1, o.line1) == 0 && strcmp(line2, o.line2) == 0 && strcmp(line3, o.line3) == 0
-        && strcmp(version, o.version) == 0 && blink == o.blink && spin == o.spin;
+        && strcmp(version, o.version) == 0 && alert == o.alert && blink == o.blink && spin == o.spin;
 }
 
 bool animates(const View& v){
+    if (v.alert){
+        return true;
+    }
     switch (v.screen){
         case Screen::Setup:
         case Screen::Linking:

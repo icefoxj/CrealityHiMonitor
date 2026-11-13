@@ -1,6 +1,6 @@
 # Creality Hi: what the printer tells a LAN client
 
-HM-01 reads two interfaces of the stock Creality Hi firmware (Creality OS, Klipper-based, model code `F018`). Neither needs root or a password. This page records what was captured from a real Hi while printing (2026-11-13), and where the meaning of each code comes from.
+HM-01 reads the Creality websocket of the stock Creality Hi firmware (Creality OS, Klipper-based, model code `F018`). It needs no root or password. This page records what was captured from a real Hi while printing (2026-11-13), and where the meaning of each code comes from.
 
 ## 1. Creality websocket, `ws://<printer>:9999/`
 
@@ -51,46 +51,31 @@ From the label table in Creality Print 6.3's device dashboard (the JS that talks
 - Creality Print sends nothing and reconnects after 20 s without a message.
 - HM-01 does both: a heartbeat every 10 s, and a reconnect after 20 s of silence.
 
-## 2. Moonraker, `http://<printer>:7125/`
+## 2. Moonraker, `http://<printer>:7125/` (not used)
 
-The Hi runs Moonraker (API 1.0.5) without authentication. HM-01 polls one query:
+The Hi also runs Moonraker (API 1.0.5) without authentication. Its `display_status.progress` is the M73 percentage that Creality Print writes into the G-code. It looked like the right "percent done", but over a whole print it was not (next section). HM-01 does not use Moonraker, so it also works on Creality printers where port 7125 is closed.
 
-```
-GET /printer/objects/query?display_status=progress&print_stats=state,print_duration
-```
+## 3. Which numbers give a good ETA
 
-```json
-{"result": {"status": {
-  "display_status": {"progress": 0.39},
-  "print_stats": {"state": "printing", "print_duration": 3899.26}}}}
-```
+Logged every 30 s over one whole print (`NovoCubo2_base`, a part with wide bottom layers, Creality Print estimate 2 h 31 min 7 s = 9067 s). The printer reported "complete" at a print time of **9230 s**.
 
-- `display_status.progress` is the slicer's **M73** percentage. Creality Print writes M73 into the G-code, and Klipper keeps the last value while printing.
-- M73 is the share of the slicer's estimated time that the current file position represents. It is the meaningful "percent done".
+| Print time | `printProgress` (file) | layers | M73 (Moonraker) | time / estimate | true share |
+|---|---|---|---|---|---|
+| 4018 s | 18 % | 17/148 | 41 % | 44 % | 44 % |
+| 6196 s | 50 % | 68/148 | 58 % | 68 % | 67 % |
+| 8133 s | 82 % | 118/148 | 72 % | 90 % | 88 % |
+| 9100 s | 99 % | 143/148 | 78 % | (countdown at 0) | 99 % |
 
-## 3. Why HM-01 computes its own ETA
+- **`printLeftTime` is a good time left.** The countdown said the job would end at 9067 s; it ended at 9230 s (1.8 % late).
+- **Print time ÷ (print time + `printLeftTime`) is a good percent.** It stayed within ~1.5 points of the real share of the time.
+- **`printProgress` lags the time.** Wide bottom layers hold few bytes per minute. It catches up at the end, where it is accurate.
+- **M73 was wrong.** It ran at a near-constant rate that would have put the end at about 14 000 s, and read 78 % when the job ended. An estimator built on it predicted about 11 500 s: 25 % too late.
 
-Measured on one print (`NovoCubo2_base`, slicer estimate 2 h 31 min, a part with wide bottom layers), at the same moment:
+**HM-01's estimate**, in [`firmware/lib/hm_core/src/eta.cpp`](../firmware/lib/hm_core/src/eta.cpp):
 
-| Source | Value |
-|---|---|
-| `printProgress` (file position) | 16 % |
-| layers | 14 / 148 = 9 % |
-| M73 (slicer, time-based) | 39 % |
-| `printJobTime / (printJobTime + printLeftTime)` | 43 % |
+- Percent = print time ÷ estimated total, capped at 99 % until the printer says it is done.
+- Time left = `printLeftTime`.
+- Once the countdown reaches 0 and the job goes on, the time left is extrapolated from `printProgress`.
+- While paused, the estimate is held.
 
-- **File position lags the time.** Wide bottom layers hold few bytes per minute of printing.
-- **`printLeftTime` is only a countdown.** It is `T - printJobTime`, where T is the slicer's total.
-- **This printer ran slower than the slicer assumed.** Over 23 minutes M73 advanced 10 %, which the slicer had budgeted at about 15 minutes: a speed ratio of about 1.4. At that pace `printLeftTime` reaches 0:00 long before the end.
-
-**HM-01's estimate:**
-
-1. **Percent** = M73.
-2. **Time left** = T × (1 − p) × r, where:
-   - T × (1 − p) is the slicer's time left at the current position.
-   - r is the measured speed ratio: real seconds per slicer second between M73 steps, over the last 20 min of printing.
-3. Below 5 min of history, r = 1.
-4. While paused, the estimate is held.
-5. **Without Moonraker**, HM-01 shows the printer's own `printProgress` and `printLeftTime`.
-
-The code is in [`firmware/lib/hm_core/src/eta.cpp`](../firmware/lib/hm_core/src/eta.cpp). The tests in `firmware/test/test_core` replay a slower-than-sliced print.
+`firmware/test/test_core` replays this print (173 samples) and checks the time left within 3 % of the job and the percent within 3 points.

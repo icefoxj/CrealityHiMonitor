@@ -15,6 +15,9 @@ struct Settings {
     float   sign        = -1.0f;
     float   offsetDeg   = 0.0f;
     uint8_t brightness  = 128;
+    int8_t  buzzerPin   = -1;   // piezo buzzer GPIO, -1 = none
+    uint8_t volume      = 160;  // 0..255
+    bool    muted       = false;
 };
 
 namespace settings {
@@ -28,5 +31,8 @@ void setTz(const char* tz);
 void setCalibration(uint8_t rotation, float sign, float offsetDeg);
 void resetCalibration();
 void setBrightness(uint8_t b);
+void setBuzzerPin(int8_t pin);
+void setVolume(uint8_t v);
+void setMuted(bool m);
 
 }  // namespace settings

@@ -7,9 +7,6 @@
 
 namespace hm {
 
-const char* const kMoonrakerQuery =
-    "/printer/objects/query?display_status=progress&print_stats=state,print_duration";
-
 namespace {
 
 void copyStr(char* dst, size_t n, const char* src){
@@ -152,25 +149,6 @@ Phase phaseOf(const PrinterStatus& st){
         case 7: return Phase::Stopping;
         default: return Phase::Unknown;
     }
-}
-
-bool parseMoonraker(MoonrakerStatus& out, const char* data, size_t len){
-    JsonDocument doc;
-    if (deserializeJson(doc, data, len)){
-        return false;
-    }
-    JsonObjectConst status = doc["result"]["status"];
-    if (status.isNull()){
-        return false;
-    }
-    MoonrakerStatus m;
-    float f;
-    if (readFloat(status["display_status"]["progress"], f)) m.m73 = f;
-    if (readFloat(status["print_stats"]["print_duration"], f)) m.printS = f;
-    copyStr(m.state, sizeof(m.state), status["print_stats"]["state"] | static_cast<const char*>(nullptr));
-    m.valid = true;
-    out = m;
-    return true;
 }
 
 }  // namespace hm

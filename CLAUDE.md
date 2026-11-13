@@ -25,18 +25,21 @@ From the original request (2026-11-13):
    - accelerometer → low-pass filtered angle → redraw at ≥ 1° change, hold when flat;
    - see `e:\work\claude-monitor`, `components/monitor-core/src/tilt.cpp`.
 5. **Public GitHub repo** with README.md and CLAUDE.md.
+6. **An alert when the print ends**, with sound if the hardware can make one (2026-11-13).
+   - The AtomS3R has no speaker, so the alert is always visual.
+   - Sound plays on an Atomic Echo Base (auto-detected) or a GPIO buzzer.
 
-## Current phase: v0.1.0, not run on hardware
+## Current phase: v0.1.0, first steps on hardware
 
-- The firmware compiles; 24 host tests pass.
+- 28 host tests pass. The estimator test replays a real 2.5 h print from the user's Hi.
 - The screens are rendered on the PC with the same code.
-- The parser and estimator were checked against data captured from the user's Creality Hi while it printed.
-- **Nobody has flashed it on an AtomS3R yet.** On the first hardware session, check these:
-  - orientation;
-  - frame time while turning;
-  - the colours (RGB565 byte order, see Gotchas);
-  - the setup portal;
-  - the printer search.
+- **Flashed on the user's AtomS3R (2026-11-13).** That unit normally runs claude-monitor: ask before flashing it.
+  - Seen working: boot, setup portal, console, IMU. The angle matched claude-monitor's in the same position.
+  - Not yet checked:
+    - the live link to the printer (Wi-Fi not configured yet);
+    - the alert;
+    - frame time while turning;
+    - the colours.
 
 ## Commands
 
@@ -58,11 +61,12 @@ pio device monitor            # console, 115200; type "help"
 ## Layout
 
 ```
-firmware/src/            hardware glue (Arduino): main.cpp (display, IMU, button, backlight, console),
-                         net.cpp (WiFiManager portal, printer search task, websocket, Moonraker task),
-                         settings.cpp (NVS "hm01"), config.h (version, timings, defaults)
+firmware/src/            hardware glue (Arduino): main.cpp (display, IMU, button, backlight, console, alerts),
+                         net.cpp (WiFiManager portal, printer search task, websocket), sound.cpp (Echo Base
+                         probe before M5.begin, GPIO buzzer, melodies), settings.cpp (NVS "hm01"), config.h
 firmware/lib/hm_core/    plain C++ + ArduinoJson, no Arduino headers, unit-tested on the host:
                          printer (parsing, state codes), eta (estimator), job (state -> screen, end latch),
+                         alert (when to flash / which melody),
                          screens (bezel + HUD), gfx (AA vector raster), mechfont, tilt, console (parser)
 firmware/test/test_core/ Unity tests (fixtures are real captured messages)
 tools/                   preview.cpp (renders every screen to PPM), previews.py (PNGs, GIF, hero mock-up)
@@ -80,7 +84,11 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - 5 paused, 6 pausing, 7 stopping, 8 restoring, 9 starting.
   - `layer == 0` with state 1 = heating/levelling.
 - **`printProgress` is the file position, not time.** `printLeftTime` = slicer total − `printJobTime`: a countdown that ignores how fast the printer really goes.
-- **Moonraker on 7125**, no auth: `display_status.progress` is the slicer's M73. The estimator in `eta.cpp` is built on it. Read the comment at the top of `eta.h` before changing it.
+- **The ETA comes from the countdown, measured over a whole 2.5 h print:**
+  - **`printLeftTime` was right within 1.8 %.**
+  - **Moonraker's M73 was useless:** 78 % when the job ended.
+  - HM-01 therefore reads only port 9999. Do not bring M73 back without new measurements.
+  - Read `eta.h` and `docs/creality-websocket.md` §3 before changing the estimator.
 - **Keep-alive:** the printer's web UI sends `{"ModeCode":"heart_beat",...}` and gets `ok`; Creality Print reconnects after 20 s of silence. HM-01 does both.
 - The user's printer is on the same LAN as the development PC. Probe ports 9999/7125 on the LAN neighbours to find it.
   - Reading its APIs is fine.
@@ -134,5 +142,8 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
 - **M5GFX byte order:** `pushImage(..., const uint16_t*)` treats the data as *byte-swapped* RGB565. Our buffer is native RGB565, so `main.cpp` passes it as `const lgfx::rgb565_t*`. Keep that cast.
 - **`int32_t` vs `int`:** they are the same type on ESP32 Arduino 2.x and on MinGW. Do not overload on both (see the `readInt` template in `printer.cpp`).
 - **WiFiManager runs non-blocking** (`process()` in `net::loop()`). Printer and time zone are on the portal's separate "Setup" page.
-- **Blocking work runs in tasks on core 0:** the printer search and the Moonraker HTTP poll. Everything else runs in the Arduino loop on core 1. The websocket callbacks run inside `ws.loop()`, in the main loop.
+- **Blocking work runs in a task on core 0:** the printer search. Everything else runs in the Arduino loop on core 1. The websocket callbacks run inside `ws.loop()`, in the main loop.
+- **Opening the USB serial port can reset the board.** pyserial toggles DTR/RTS, which resets an ESP32-S3 on its USB Serial/JTAG port. Open it with `dtr = rts = False` set before `open()`; `pio device monitor` is fine.
+- **Sound:** the Echo Base must be configured before `M5.begin()` (`sound::prepare`). The Atomic SPK base is not supported: with it, M5Unified switches the IMU off.
+- **Reading back the whole 8 MB flash corrupts over USB.** Read it in 64 KB chunks with retries.
 - **The Bash tool mangles quotes and `\n`** in heredocs and `sed`. Write patch scripts to a file and run them.

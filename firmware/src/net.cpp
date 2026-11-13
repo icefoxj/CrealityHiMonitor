@@ -1,6 +1,5 @@
 #include "net.h"
 
-#include <HTTPClient.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -51,13 +50,6 @@ uint32_t      s_scanEndAt = 0;
 uint8_t       s_net[3]    = {0, 0, 0};
 uint8_t       s_self      = 0;
 
-// ---- Moonraker task
-SemaphoreHandle_t   s_mutex = nullptr;
-char                s_moonHost[64] = "";
-hm::MoonrakerStatus s_moon;
-uint32_t            s_moonAt = 0;
-volatile bool       s_jobActive = false;
-hm::MoonrakerStatus s_moonCopy;
 
 void copyStr(char* dst, size_t n, const char* src){
     snprintf(dst, n, "%s", src ? src : "");
@@ -131,12 +123,6 @@ void startWs(const char* host){
     s_wsStarted = true;
     s_linkSince = millis();
     s_info.link = Link::Connecting;
-
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    copyStr(s_moonHost, sizeof(s_moonHost), host);
-    s_moon = hm::MoonrakerStatus{};
-    s_moonAt = 0;
-    xSemaphoreGive(s_mutex);
     Serial.printf("printer: connecting to %s:%u\n", host, kCrealityPort);
 }
 
@@ -215,39 +201,6 @@ void startSearch(){
     xTaskCreatePinnedToCore(scanTask, "hm-scan", 6144, nullptr, 1, &s_scanTask, 0);
 }
 
-// ---------------------------------------------------------------- Moonraker task
-
-void moonTask(void*){
-    for (;;){
-        char host[64];
-        xSemaphoreTake(s_mutex, portMAX_DELAY);
-        copyStr(host, sizeof(host), s_moonHost);
-        xSemaphoreGive(s_mutex);
-
-        if (host[0] && WiFi.status() == WL_CONNECTED){
-            char url[192];
-            snprintf(url, sizeof(url), "http://%s:%u%s", host, kMoonrakerPort, hm::kMoonrakerQuery);
-            HTTPClient http;
-            http.setConnectTimeout(2000);
-            http.setTimeout(3000);
-            if (http.begin(url)){
-                if (http.GET() == 200){
-                    const String body = http.getString();
-                    hm::MoonrakerStatus m;
-                    if (hm::parseMoonraker(m, body.c_str(), body.length())){
-                        xSemaphoreTake(s_mutex, portMAX_DELAY);
-                        s_moon = m;
-                        s_moonAt = millis();
-                        xSemaphoreGive(s_mutex);
-                    }
-                }
-                http.end();
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(s_jobActive ? kMoonrakerPollMs : kMoonrakerIdlePollMs));
-    }
-}
-
 // ---------------------------------------------------------------- Wi-Fi
 
 void onSaveParams(){
@@ -303,8 +256,6 @@ const char* linkName(Link l){
 }
 
 void begin(){
-    s_mutex = xSemaphoreCreateMutex();
-
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(s_info.apName, sizeof(s_info.apName), "%s-%02X%02X", kUnitCode, mac[4], mac[5]);
@@ -330,8 +281,6 @@ void begin(){
     wm.setShowInfoUpdate(false);
     const char* menu[] = {"wifi", "param", "info", "exit"};
     wm.setMenu(menu, 4);
-
-    xTaskCreatePinnedToCore(moonTask, "hm-moon", 8192, nullptr, 1, nullptr, 0);
 
     if (wm.getWiFiIsSaved()){
         WiFi.begin();
@@ -478,13 +427,6 @@ void loop(){
         s_info.link = Link::Portal;
     }
 
-    const hm::Phase ph = hm::phaseOf(s_printer);
-    s_jobActive = ph == hm::Phase::Printing || ph == hm::Phase::Preparing || ph == hm::Phase::Paused;
-
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    s_info.moonraker = s_moonAt != 0 && now - s_moonAt < kMoonrakerStaleMs;
-    s_moonCopy = s_moon;
-    xSemaphoreGive(s_mutex);
 }
 
 const Info& info(){
@@ -495,8 +437,5 @@ const hm::PrinterStatus& printer(){
     return s_printer;
 }
 
-const hm::MoonrakerStatus* moonraker(){
-    return s_info.moonraker ? &s_moonCopy : nullptr;
-}
 
 }  // namespace net

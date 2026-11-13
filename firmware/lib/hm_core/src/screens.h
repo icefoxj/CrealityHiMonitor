@@ -58,6 +58,7 @@ struct View {
     char    line2[24]  = "";
     char    line3[24]  = "";
     char    version[12] = "";
+    bool    alert      = false;  // an alert is on: the ring and band flash
     uint8_t blink      = 0;      // animation phase, advanced by the caller
     uint8_t spin       = 0;      // spinner position 0..39
 

@@ -29,11 +29,15 @@ namespace settings {
 void begin(uint8_t defaultRotation){
     s_defaultRotation = defaultRotation & 3;
     Preferences p;
-    p.begin("hm01", true);
-    copyStr(s_settings.printer, sizeof(s_settings.printer), p.getString("printer", "").c_str());
+    p.begin("hm01", false);   // read-write: creates the namespace on first boot
+    // isKey() first: getString() on a missing key logs an error
+    copyStr(s_settings.printer, sizeof(s_settings.printer), p.isKey("printer") ? p.getString("printer", "").c_str() : "");
     s_settings.printerAuto = p.getBool("pauto", false);
-    copyStr(s_settings.tz, sizeof(s_settings.tz), p.getString("tz", kDefaultTz).c_str());
+    copyStr(s_settings.tz, sizeof(s_settings.tz), p.isKey("tz") ? p.getString("tz", kDefaultTz).c_str() : kDefaultTz);
     s_settings.brightness = p.getUChar("bright", kBrightness);
+    s_settings.buzzerPin  = p.getChar("buzzer", -1);
+    s_settings.volume     = p.getUChar("volume", 160);
+    s_settings.muted      = p.getBool("muted", false);
     if (p.isKey("rot")){
         s_settings.calStored = true;
         s_settings.rotation  = p.getUChar("rot", s_defaultRotation) & 3;
@@ -95,6 +99,34 @@ void setBrightness(uint8_t b){
     Preferences p;
     p.begin("hm01", false);
     p.putUChar("bright", b);
+    p.end();
+}
+
+}  // namespace settings
+
+namespace settings {
+
+void setBuzzerPin(int8_t pin){
+    s_settings.buzzerPin = pin;
+    Preferences p;
+    p.begin("hm01", false);
+    p.putChar("buzzer", pin);
+    p.end();
+}
+
+void setVolume(uint8_t v){
+    s_settings.volume = v;
+    Preferences p;
+    p.begin("hm01", false);
+    p.putUChar("volume", v);
+    p.end();
+}
+
+void setMuted(bool m){
+    s_settings.muted = m;
+    Preferences p;
+    p.begin("hm01", false);
+    p.putBool("muted", m);
     p.end();
 }
 

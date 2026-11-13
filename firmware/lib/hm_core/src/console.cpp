@@ -76,6 +76,39 @@ Command parseCommand(const char* line){
     if (strcmp(w, "version") == 0){ c.kind = Cmd::Version; return c; }
     if (strcmp(w, "reboot") == 0){ c.kind = Cmd::Reboot; return c; }
     if (strcmp(w, "setup") == 0){ c.kind = Cmd::Setup; return c; }
+    if (strcmp(w, "beep") == 0){ c.kind = Cmd::Beep; return c; }
+
+    if (strcmp(w, "sound") == 0){
+        char a[16];
+        word(r, a, sizeof(a));
+        if (strcmp(a, "on") == 0) c.value = 1;
+        else if (strcmp(a, "off") == 0) c.value = 0;
+        else { usage(c, "sound on|off"); return c; }
+        c.kind = Cmd::Sound;
+        return c;
+    }
+    if (strcmp(w, "volume") == 0){
+        char a[16];
+        word(r, a, sizeof(a));
+        if (!parseInt(a, c.value) || c.value < 0 || c.value > 255){
+            usage(c, "volume <0-255>");
+            return c;
+        }
+        c.kind = Cmd::Volume;
+        return c;
+    }
+    if (strcmp(w, "buzzer") == 0){
+        char a[16];
+        word(r, a, sizeof(a));
+        if (strcmp(a, "off") == 0){
+            c.value = -1;
+        } else if (!parseInt(a, c.value) || c.value < 0 || c.value > 48){
+            usage(c, "buzzer <gpio>|off");
+            return c;
+        }
+        c.kind = Cmd::Buzzer;
+        return c;
+    }
 
     if (strcmp(w, "printer") == 0){
         rest(r, c.arg, sizeof(c.arg));

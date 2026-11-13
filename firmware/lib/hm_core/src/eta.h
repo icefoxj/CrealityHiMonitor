@@ -1,25 +1,21 @@
 #pragma once
 
-// Progress and time-left estimate for the running job.
+// Progress and time-left estimate for the running job, from the Creality
+// websocket alone.
 //
-// What the printer offers, and why none of it is used as is:
-// - "printProgress" (websocket) is the position in the G-code file. Big
-//   bottom layers hold few bytes per minute, so it lags far behind the time
-//   spent (16 % shown at 43 % of the time on a measured print).
-// - "printLeftTime" is the slicer's total estimate minus the time printed so
-//   far: a plain countdown. When the printer runs slower than the slicer
-//   assumed, it reaches 0:00 long before the end.
-// - Moonraker's display_status.progress is the slicer's own M73 percentage:
-//   the share of the slicer's estimated time that the current file position
-//   represents. This is the right "percent done".
+// Measured on a real 2 h 31 min print (docs/creality-websocket.md):
+// - "printLeftTime" is the slicer's total estimate T minus "printJobTime":
+//   a countdown. The job ended 163 s after T (1.8 % late), so it is a good
+//   time left.
+// - printJobTime / T tracked the real share of the time within ~1.5 points
+//   all along: that is the percent shown.
+// - "printProgress" is the position in the G-code file. It lags badly while
+//   the wide bottom layers print (16 % shown at 43 % of the time), and is
+//   only used for the tail when the countdown has run out.
+// - Moonraker's M73 progress (from Creality Print's G-code) was useless:
+//   78 % when the job ended. It is not used.
 //
-// The estimate: percent = M73. Time left = the slicer's time left at this
-// position, T * (1 - p), times the speed ratio actually seen on this
-// printer: real print seconds per slicer second, measured between M73
-// steps over a sliding window. T (the slicer's total) is printJobTime +
-// printLeftTime while the countdown is positive.
-//
-// Without Moonraker the estimate falls back to the printer's own numbers.
+// While paused, the estimate is held.
 
 #include <stdint.h>
 
@@ -30,44 +26,21 @@ namespace hm {
 struct Estimate {
     int     percent    = -1;   // 0..100, -1 unknown
     int32_t remainingS = -1;   // -1 unknown
-    float   ratio      = 1.0f; // speed ratio in use (1 = as the slicer said)
-    bool    fromM73    = false;
-};
-
-struct EstimatorConfig {
-    float windowS   = 1200.0f;   // speed ratio measured over the last ~20 min of print time
-    float minWindowS = 300.0f;   // below this much history, trust the slicer (ratio 1)
-    float minRatio  = 0.5f;      // clamp the measured ratio
-    float maxRatio  = 3.0f;
+    bool    overrun    = false;   // past the slicer's estimate: tail from the file position
 };
 
 class Estimator {
 public:
-    explicit Estimator(const EstimatorConfig& cfg = {}) : cfg_(cfg) {}
-
     void reset();
 
-    // One update. m73 may be null (Moonraker not reachable) or stale.
-    Estimate update(const PrinterStatus& st, const MoonrakerStatus* m73);
+    // One update with the printer's latest numbers
+    Estimate update(const PrinterStatus& st);
 
     const Estimate& last() const { return last_; }
+    int32_t total() const { return total_; }   // slicer estimate T, seconds; -1 unknown
 
 private:
-    struct Step {
-        float jobS;   // print time when M73 reached p
-        float p;      // 0..1
-    };
-    static constexpr int kSteps = 128;
-
-    void addStep(float jobS, float p);
-    float ratio(float jobNow) const;
-
-    EstimatorConfig cfg_;
-    Step   steps_[kSteps];
-    int    head_   = 0;      // next write position
-    int    count_  = 0;
-    float  lastP_  = -1.0f;
-    float  total_  = -1.0f;  // slicer total T, seconds
+    int32_t  total_ = -1;
     Estimate last_;
 };
 

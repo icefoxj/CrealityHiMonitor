@@ -1,14 +1,15 @@
 # CrealityHiMonitor — HM-01
 
-A live print monitor for the **Creality Hi**, on an **M5Stack AtomS3R**. The 24 mm cube sits next to the printer and shows the job's **percent done**, the **time left** and the **finish time (ETA)**. The display is a mech-style HUD that **turns with the cube**: stand it on any side or tilt it, and the dial rotates smoothly to stay upright.
+A live print monitor for the **Creality Hi**, on an **M5Stack AtomS3R**. The 24 mm cube sits next to the printer and shows the job's **percent done**, the **time left** and the **finish time (ETA)**. When the job ends it **alerts**: the screen flashes, and it plays a chime if a speaker is fitted. The display is a mech-style HUD that **turns with the cube**: stand it on any side or tilt it, and the dial rotates smoothly to stay upright.
 
 ![HM-01 on an AtomS3R, upright and tilted](docs/img/hero.png)
 
 > **Status: v0.1.0, first release.**
-> - Firmware compiles; its logic passes 24 unit tests on the host.
-> - The parser was checked against messages captured from a real Creality Hi during a print, and the ETA against that print's progress.
+> - The firmware's logic passes 28 unit tests on the host.
+> - The parser and the ETA are checked against a real 2.5 h print on a Creality Hi, replayed in the tests.
+> - On an AtomS3R it boots, opens the setup portal, reads the IMU and answers the console. The tilt angle matched claude-monitor's in the same position.
+> - **Not yet checked on hardware:** the live link to the printer and the end-of-job alert.
 > - Every image here is rendered by the firmware's own drawing code.
-> - **Not yet run on an AtomS3R.** The orientation defaults come from claude-monitor's AtomS3R build, where they were verified on hardware. If the dial turns the wrong way on yours, see [Orientation](#orientation).
 
 ## What it shows
 
@@ -18,14 +19,14 @@ A live print monitor for the **Creality Hi**, on an **M5Stack AtomS3R**. The 24 
 
 **Printing screen:**
 
-- **48 %**: progress through the job. This is the slicer's own time-based progress (M73), not the position in the file.
-- **LEFT 1:48**: hours:minutes still to print. The estimate corrects for how fast *your* printer is really going, see [How the ETA is computed](#how-the-eta-is-computed).
+- **48 %**: the share of the job's estimated print time already printed, not the position in the file.
+- **LEFT 1:48**: hours:minutes still to print. See [How the ETA is computed](#how-the-eta-is-computed).
 - **ETA 18:47**: the wall-clock time the job should end.
 - **Ring**: 40 segments, one per 2.5 %. The next segment blinks while printing.
 - **L36/148**: current layer / total layers.
 - **Title band**: PRINT, HEAT (heating and levelling before the first layer), PAUSED, DONE, STOP or ERROR, in its own colour.
 
-When the job ends, the DONE / STOP / ERROR screen stays for 30 minutes with the total print time and the time it ended. The printer itself only says "complete" for about a minute.
+When the job ends, the DONE / STOP / ERROR screen stays for 30 minutes with the total print time and the time it ended. The printer itself only says "complete" for about a minute. A finished job also raises an [alert](#alerts).
 
 | Idle | Boot | Setup |
 |---|---|---|
@@ -72,15 +73,9 @@ Orange livery on graphite, with a colour per state: orange printing, amber pause
 |---|---|
 | **M5Stack AtomS3R** (ESP32-S3, 0.85" 128 × 128 IPS, BMI270 IMU, button under the screen) | the whole device |
 | USB-C cable and any 5 V USB supply | power |
+| Optional: **M5Stack Atomic Echo Base** (speaker), or a **piezo buzzer** on the Grove port | sound for the [alerts](#alerts); the AtomS3R has no speaker |
 
-The printer and the AtomS3R must be on the same network. HM-01 talks to the printer's stock interfaces: no root, no printer settings to change.
-
-| Port | Interface | Used for |
-|---|---|---|
-| 9999 | Creality websocket (what Creality Print uses) | state, times, layers, temperatures, errors |
-| 7125 | Moonraker (Klipper API) | the slicer's M73 progress, for the percent and the ETA |
-
-If Moonraker does not answer, HM-01 falls back to the printer's own percent and time left. Protocol notes: [docs/creality-websocket.md](docs/creality-websocket.md).
+The printer and the AtomS3R must be on the same network. HM-01 reads one stock interface of the printer, the **Creality websocket on port 9999**: the one Creality Print uses. It gives the state, times, layers, temperatures and errors. No root, no printer settings to change. Protocol notes: [docs/creality-websocket.md](docs/creality-websocket.md).
 
 ## Install
 
@@ -119,7 +114,7 @@ On the portal's **Setup** page:
 
 | Press | Effect |
 |---|---|
-| Click | Brightness: bright → dim → off → bright. On a DONE / STOP / ERROR screen, the first click dismisses it |
+| Click | Silences an alert. Otherwise: on a DONE / STOP / ERROR screen, the first click dismisses it; then brightness: bright → dim → off → bright |
 | Hold 3 s | Open the setup portal again (Wi-Fi, printer, time zone) |
 
 The READY screen dims by itself after 15 minutes.
@@ -135,6 +130,9 @@ Any serial terminal at 115200 baud on the USB port (`pio device monitor`):
 | `tz <POSIX TZ>` | time zone |
 | `calibrate rot=<0-3> sign=<1\|-1> offset=<deg>` / `calibrate reset` | orientation, saved |
 | `bright <0-255>` | backlight level, saved |
+| `sound on\|off`, `volume <0-255>` | alert sound, saved |
+| `buzzer <gpio>` / `buzzer off` | piezo buzzer pin when there is no Echo Base, saved |
+| `beep` | play the "job done" chime (a speaker test) |
 | `setup` | open the setup portal |
 | `wifi reset` | forget the Wi-Fi network and reboot into setup |
 | `version`, `reboot`, `help` | |
@@ -154,27 +152,49 @@ If the dial is not upright on yours, calibrate it from the console:
 
 `status` reports `angle=`, the angle in use, and the raw `ax/ay/az`. `calibrate reset` returns to the defaults.
 
+## Alerts
+
+| Event | Screen | Sound (if a speaker is fitted) |
+|---|---|---|
+| Job **done** | the DONE screen flashes for 90 s at full brightness, even if the screen was dimmed or off | a chime, three times, 30 s apart |
+| Printer **stopped on an error**, or **paused itself** with an error code (e.g. filament run-out) | the screen flashes while it lasts, up to 5 min | an alarm every 30 s, up to 5 min |
+| Job cancelled (STOP) | no alert: you did it | none |
+
+A click on the button silences an alert.
+
+**Sound.** The AtomS3R has no speaker. HM-01 plays the alerts on either:
+
+- an **Atomic Echo Base** stacked under the Atom: found automatically at boot (its codec answers on I2C);
+- a **piezo buzzer** on a free pin. Wire it to the Grove port, signal on G2 (yellow) or G1 (white), and run `buzzer 2` (or `buzzer 1`) once on the console. G5–G8, G38 and G39 on the bottom header work too.
+
+`beep` plays the chime to check it; `sound off` mutes; `volume <0-255>` sets the level.
+
 ## How the ETA is computed
 
-The printer offers two numbers, and on a real print both were misleading:
+The printer offers two numbers. HM-01 logged both, every 30 s, over a 2 h 31 min print and compared them with the real end:
 
-- **`printProgress`** is the position in the G-code file. Wide bottom layers hold few bytes per minute. On the measured print it said 16 % at 43 % of the time.
-- **`printLeftTime`** is the slicer's total estimate minus the time printed: a plain countdown. The Hi printed about 1.4 × slower than Creality Print had estimated, so this would reach 0:00 with a third of the print still to go.
+| Source | What it is | How it did |
+|---|---|---|
+| `printLeftTime` | Creality's estimated total time minus the time printed: a countdown | the job ended **163 s after** the estimate (1.8 %) |
+| print time ÷ estimated total | share of the estimated time already printed | within ~1.5 points of the real share all along |
+| `printProgress` | position in the G-code file | **16 % at 43 % of the time**: wide bottom layers hold few bytes per minute |
+| Moonraker's M73 progress | the slicer's percent from the G-code | **78 % when the job ended**: not usable |
 
 **HM-01's estimate:**
 
-1. **Percent** = the slicer's M73 progress, read from Moonraker.
-2. **Time left** = the slicer's time left at this point, multiplied by the **speed ratio** measured on your printer. The ratio is real print seconds per slicer second between M73 steps, over the last 20 minutes.
-3. **ETA** = now + time left.
-4. **While paused**, the estimate is held.
+- **Percent** = print time ÷ the estimated total (capped at 99 % until the printer says it is done).
+- **LEFT** = the printer's countdown.
+- **Past the estimate** (countdown at 0, still printing): the rest comes from the file position, which is accurate near the end of the file.
+- **ETA** = now + LEFT.
+- **While paused**, the numbers are held.
 
-Details and the captured numbers: [docs/creality-websocket.md](docs/creality-websocket.md).
+The real print is replayed in the unit tests. Details: [docs/creality-websocket.md](docs/creality-websocket.md).
 
 ## Development
 
 ```bash
 cd firmware
-pio test -e native          # 24 unit tests on the host (needs gcc)
+pio test -e native          # 28 unit tests on the host (needs gcc)
 pio run -e atoms3r          # firmware
 
 # Screens -> docs/img (needs g++ and Pillow). Same drawing code as the device.
@@ -184,10 +204,11 @@ python tools/previews.py
 ```
 firmware/
   src/                 hardware glue: main.cpp (display, IMU, button, console), net.cpp (Wi-Fi portal,
-                       printer search, websocket, Moonraker poll), settings.cpp (NVS), config.h
+                       printer search, websocket), sound.cpp (Echo Base / buzzer), settings.cpp (NVS), config.h
   lib/hm_core/src/     plain C++, tested on the host:
-    printer.*          Creality websocket + Moonraker parsing, state codes
+    printer.*          Creality websocket parsing, state codes
     eta.*              percent and time-left estimate
+    alert.*            end-of-job / attention alerts, melodies
     job.*              printer state -> screen, end-of-job latch
     screens.*          the bezel and the HUD screens
     gfx.*              anti-aliased vector drawing into an RGB565 buffer
@@ -205,7 +226,8 @@ CI (`.github/workflows/firmware.yml`) runs the tests and builds the firmware on 
 
 - The setup portal and the printer interfaces have no authentication: keep HM-01 and the printer on a trusted network.
 - The printer search covers the /24 around the AtomS3R's own address. On other networks, set the address.
-- Only the Creality Hi has been tested. Other Creality printers with the same websocket (K1, K1C, K1 Max, K2) should work. Moonraker on port 7125 is usually closed on them without root, and HM-01 then uses the printer's own numbers.
+- Only the Creality Hi has been tested. Other Creality printers with the same websocket (K1, K1C, K1 Max, K2) should work.
+- The ETA is only as good as Creality's time estimate: it was within 2 % on the measured print. A printer that runs much slower than the estimate shows 99 % and the file-based tail at the end.
 
 ## License
 
