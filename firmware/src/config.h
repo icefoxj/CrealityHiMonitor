@@ -22,9 +22,14 @@ constexpr uint32_t kWsReconnectMs = 3000;
 constexpr uint32_t kOfflineAfterMs = 12000;
 
 
-// Network search for the printer (when no address is set): the /24 of our
-// own address, one TCP connect per host on port 9999
-constexpr int      kScanConnectMs = 150;
+// Network search for the printer (when no address is set): a TCP connect to
+// port 9999 on every host of our own /24. The first packet to a host waits
+// for ARP, and on Wi-Fi the access point holds broadcasts for a dozing
+// client until its next DTIM beacon, so first contact can take several
+// hundred ms (150 ms missed the user's Hi every time). Hence a long timeout,
+// with several hosts in flight at once; lwIP's ARP table holds only 10.
+constexpr uint32_t kScanConnectMs = 1500;
+constexpr int      kScanParallel  = 6;
 constexpr uint32_t kScanRetryMs   = 60000;
 
 // ---- Wi-Fi

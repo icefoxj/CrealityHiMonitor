@@ -28,6 +28,9 @@ From the original request (2026-11-13):
 6. **An alert when the print ends**, with sound if the hardware can make one (2026-11-13).
    - The AtomS3R has no speaker, so the alert is always visual.
    - Sound plays on an Atomic Echo Base (auto-detected) or a GPIO buzzer.
+7. **Standalone over Wi-Fi** (2026-11-13): HM-01 runs on any USB power supply with no PC attached.
+   - It joins the Wi-Fi itself and reads the Hi's port 9999 directly. Nothing goes through a PC.
+   - USB is only for power, flashing and the optional console. Never make the firmware wait for a USB host.
 
 ## Current phase: v0.1.0, first steps on hardware
 
@@ -35,8 +38,10 @@ From the original request (2026-11-13):
 - The screens are rendered on the PC with the same code.
 - **Flashed on the user's AtomS3R (2026-11-13).** That unit normally runs claude-monitor: ask before flashing it.
   - Seen working: boot, setup portal, console, IMU. The angle matched claude-monitor's in the same position.
+  - **Live link seen working (2026-11-13):**
+    - The portal worked from a phone, after the fixes in `[Unreleased]`.
+    - HM-01 joined the user's Wi-Fi, the search found the Hi, and the data held steady mid-print.
   - Not yet checked:
-    - the live link to the printer (Wi-Fi not configured yet);
     - the alert;
     - frame time while turning;
     - the colours.
@@ -142,6 +147,11 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
 - **M5GFX byte order:** `pushImage(..., const uint16_t*)` treats the data as *byte-swapped* RGB565. Our buffer is native RGB565, so `main.cpp` passes it as `const lgfx::rgb565_t*`. Keep that cast.
 - **`int32_t` vs `int`:** they are the same type on ESP32 Arduino 2.x and on MinGW. Do not overload on both (see the `readInt` template in `printer.cpp`).
 - **WiFiManager runs non-blocking** (`process()` in `net::loop()`). Printer and time zone are on the portal's separate "Setup" page.
+- **The portal's web server takes one step per call and queues only 4 connections.** `net::service()` runs it all through the wait between frames. Once per frame was too slow: phones got their connections refused.
+- **Elapsed time in `net::loop()`: always `since(t)`, never a `now` read at the top.** `startWs()`, `startPortal()` and the websocket callbacks set stamps newer than that `now`, and unsigned `now - t` wraps to ~49 days.
+- **Printer search timing:**
+  - First contact with a Wi-Fi host waits for ARP, and the access point holds broadcasts until the next DTIM beacon. That can take several hundred ms; 150 ms missed the Hi every time.
+  - Keep the per-host timeout ≥ 1 s, with parallel probes. Stay ≤ 6 in flight: lwIP's ARP table has 10 entries.
 - **Blocking work runs in a task on core 0:** the printer search. Everything else runs in the Arduino loop on core 1. The websocket callbacks run inside `ws.loop()`, in the main loop.
 - **Opening the USB serial port can reset the board.** pyserial toggles DTR/RTS, which resets an ESP32-S3 on its USB Serial/JTAG port. Open it with `dtr = rts = False` set before `open()`; `pio device monitor` is fine.
 - **Sound:** the Echo Base must be configured before `M5.begin()` (`sound::prepare`). The Atomic SPK base is not supported: with it, M5Unified switches the IMU off.

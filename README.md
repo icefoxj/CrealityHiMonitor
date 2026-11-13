@@ -7,8 +7,9 @@ A live print monitor for the **Creality Hi**, on an **M5Stack AtomS3R**. The 24 
 > **Status: v0.1.0, first release.**
 > - The firmware's logic passes 28 unit tests on the host.
 > - The parser and the ETA are checked against a real 2.5 h print on a Creality Hi, replayed in the tests.
-> - On an AtomS3R it boots, opens the setup portal, reads the IMU and answers the console. The tilt angle matched claude-monitor's in the same position.
-> - **Not yet checked on hardware:** the live link to the printer and the end-of-job alert.
+> - On an AtomS3R it boots, reads the IMU and answers the console. The tilt angle matched claude-monitor's in the same position.
+> - **The live link works on hardware:** setup from a phone, Wi-Fi join, printer search, and steady data from a Creality Hi mid-print (fixes in [Unreleased](CHANGELOG.md)).
+> - **Not yet checked on hardware:** the end-of-job alert.
 > - Every image here is rendered by the firmware's own drawing code.
 
 ## What it shows
@@ -20,8 +21,8 @@ A live print monitor for the **Creality Hi**, on an **M5Stack AtomS3R**. The 24 
 **Printing screen:**
 
 - **48 %**: the share of the job's estimated print time already printed, not the position in the file.
+- **ETA 18:47**: the wall-clock time the job should end, on the big line.
 - **LEFT 1:48**: hours:minutes still to print. See [How the ETA is computed](#how-the-eta-is-computed).
-- **ETA 18:47**: the wall-clock time the job should end.
 - **Ring**: 40 segments, one per 2.5 %. The next segment blinks while printing.
 - **L36/148**: current layer / total layers.
 - **Title band**: PRINT, HEAT (heating and levelling before the first layer), PAUSED, DONE, STOP or ERROR, in its own colour.
@@ -103,7 +104,11 @@ pio device monitor               # serial console, 115200
 1. **Power it.** On first boot the screen shows **SETUP**, a network name `HM-01-xxxx` and its password.
 2. **Join that network** with a phone. The setup page opens by itself; if it does not, browse to `http://192.168.4.1`.
 3. **Choose your Wi-Fi** and save. HM-01 joins it and closes the portal.
+   - Pick a **2.4 GHz** network: the ESP32-S3 has no 5 or 6 GHz radio. If a WPA3-only network refuses it, use a WPA2 one.
+   - It must reach the printer: the same network as the Hi is simplest.
 4. **Wait for the printer.** HM-01 searches its subnet (the /24) for a Creality printer on port 9999 and remembers the address. If the printer later moves to another address, it searches again.
+
+From then on HM-01 needs only power: any 5 V USB supply. It talks to the printer by itself, with no PC and no app in between, and keeps its settings through power cuts.
 
 On the portal's **Setup** page:
 

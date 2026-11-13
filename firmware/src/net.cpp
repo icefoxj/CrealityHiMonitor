@@ -3,8 +3,11 @@
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#include <errno.h>
 #include <esp_mac.h>
+#include <fcntl.h>
 #include <freertos/FreeRTOS.h>
+#include <lwip/sockets.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <stdio.h>
@@ -50,6 +53,14 @@ uint32_t      s_scanEndAt = 0;
 uint8_t       s_net[3]    = {0, 0, 0};
 uint8_t       s_self      = 0;
 
+
+// Milliseconds since t, a millis() stamp. Reads the clock afresh on purpose:
+// stamps set during the current pass (startWs(), startPortal(), the
+// websocket callbacks inside ws.loop()) are newer than a time read at the
+// top of loop(), and an unsigned "now - t" then wraps to about 49 days.
+uint32_t since(uint32_t t){
+    return millis() - t;
+}
 
 void copyStr(char* dst, size_t n, const char* src){
     snprintf(dst, n, "%s", src ? src : "");
@@ -159,21 +170,113 @@ bool looksLikeCreality(WiFiClient& c, const IPAddress& ip){
     return false;
 }
 
+// Port 9999 answered on this host: is it a Creality printer? By now ARP has
+// resolved it, so a fresh connection is quick.
+bool checkHost(uint8_t host){
+    const IPAddress ip(s_net[0], s_net[1], s_net[2], host);
+    WiFiClient c;
+    if (!c.connect(ip, kCrealityPort, 1000)){
+        return false;
+    }
+    const bool yes = looksLikeCreality(c, ip);
+    c.stop();
+    return yes;
+}
+
+// Starts a non-blocking connect to host:9999. -1: no socket free (retry
+// later), -2: the connect failed at once (skip the host).
+int openProbe(uint8_t host){
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0){
+        return -1;
+    }
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(kCrealityPort);
+    addr.sin_addr.s_addr = htonl((uint32_t(s_net[0]) << 24) | (uint32_t(s_net[1]) << 16)
+                                 | (uint32_t(s_net[2]) << 8) | host);
+    if (lwip_connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0 && errno != EINPROGRESS){
+        close(fd);
+        return -2;
+    }
+    return fd;
+}
+
 void scanTask(void*){
-    for (int i = 1; i <= 254 && !s_scanDone; i++){
-        s_scanAt = i;
-        if (i == s_self){
-            continue;
+    struct Probe { int fd; uint8_t host; uint32_t at; };
+    Probe probe[kScanParallel];
+    for (Probe& p : probe){
+        p.fd = -1;
+    }
+    int next = 1;
+    bool found = false;
+    while (!found){
+        // Keep kScanParallel connects in flight
+        bool noSocket = false;
+        for (Probe& p : probe){
+            while (p.fd < 0 && next <= 254 && !noSocket){
+                const uint8_t host = static_cast<uint8_t>(next);
+                const int fd = host == s_self ? -2 : openProbe(host);
+                if (fd == -1){
+                    noSocket = true;   // try this host again on the next pass
+                    break;
+                }
+                next++;
+                if (fd >= 0){
+                    p.fd = fd;
+                    p.host = host;
+                    p.at = millis();
+                    s_scanAt = host;
+                }
+            }
         }
-        IPAddress ip(s_net[0], s_net[1], s_net[2], static_cast<uint8_t>(i));
-        WiFiClient c;
-        if (c.connect(ip, kCrealityPort, kScanConnectMs)){
-            const bool yes = looksLikeCreality(c, ip);
-            c.stop();
-            if (yes){
-                copyStr(s_scanFound, sizeof(s_scanFound), ip.toString().c_str());
+        fd_set wr;
+        FD_ZERO(&wr);
+        int maxFd = -1;
+        for (const Probe& p : probe){
+            if (p.fd >= 0){
+                FD_SET(p.fd, &wr);
+                maxFd = p.fd > maxFd ? p.fd : maxFd;
+            }
+        }
+        if (maxFd < 0){
+            if (noSocket){
+                vTaskDelay(pdMS_TO_TICKS(200));
+                continue;
+            }
+            break;   // every host tried
+        }
+        struct timeval tv = {0, 50 * 1000};
+        if (select(maxFd + 1, nullptr, &wr, nullptr, &tv) < 0){
+            FD_ZERO(&wr);
+        }
+        // Writable = the connect finished, accepted (SO_ERROR 0) or refused
+        for (Probe& p : probe){
+            if (p.fd < 0){
+                continue;
+            }
+            bool open = false;
+            if (FD_ISSET(p.fd, &wr)){
+                int err = -1;
+                socklen_t len = sizeof(err);
+                open = getsockopt(p.fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0 && err == 0;
+            } else if (millis() - p.at < kScanConnectMs){
+                continue;   // still waiting
+            }
+            close(p.fd);
+            p.fd = -1;
+            if (open && checkHost(p.host)){
+                snprintf(s_scanFound, sizeof(s_scanFound), "%u.%u.%u.%u", s_net[0], s_net[1], s_net[2], p.host);
+                found = true;
                 break;
             }
+        }
+    }
+    for (Probe& p : probe){
+        if (p.fd >= 0){
+            close(p.fd);
         }
     }
     s_scanDone = true;
@@ -262,6 +365,9 @@ void begin(){
     snprintf(s_info.apPass, sizeof(s_info.apPass), "HM01%02X%02X", mac[4], mac[5]);
 
     WiFi.mode(WIFI_STA);
+    // Mains powered: no modem sleep. Dozing makes the radio wake only every
+    // few beacons, which slows the printer search and the websocket.
+    WiFi.setSleep(false);
     char host[24];
     snprintf(host, sizeof(host), "hm-01-%02x%02x", mac[4], mac[5]);
     WiFi.setHostname(host);
@@ -326,8 +432,13 @@ void usePrinter(const char* host){
     }
 }
 
+void service(){
+    if (wm.getConfigPortalActive()){
+        wm.process();
+    }
+}
+
 void loop(){
-    const uint32_t now = millis();
     const bool portal = wm.getConfigPortalActive();
     if (portal){
         wm.process();
@@ -347,10 +458,10 @@ void loop(){
     } else if (!connected && s_wifiUp){
         s_wifiUp = false;
         stopWs();
-        s_joinAt = now;
+        s_joinAt = millis();
         Serial.println("wifi: lost, rejoining");
     }
-    if (!connected && !wm.getConfigPortalActive() && now - s_joinAt > kWifiJoinTimeoutMs){
+    if (!connected && !wm.getConfigPortalActive() && since(s_joinAt) > kWifiJoinTimeoutMs){
         s_portalWhy = PortalWhy::JoinFailed;
         startPortal();
     }
@@ -358,16 +469,16 @@ void loop(){
     // router often boots slower than we do): nobody on the portal for 3
     // minutes, so try the network again; the portal reopens if it still fails
     if (wm.getConfigPortalActive() && !connected && s_portalWhy == PortalWhy::JoinFailed
-        && now - s_portalAt > 3UL * 60UL * 1000UL && WiFi.softAPgetStationNum() == 0){
+        && since(s_portalAt) > 3UL * 60UL * 1000UL && WiFi.softAPgetStationNum() == 0){
         Serial.println("wifi: nobody on the portal, trying the saved network again");
         closePortal();
         WiFi.mode(WIFI_STA);
         WiFi.begin();
-        s_joinAt = now;
+        s_joinAt = millis();
     }
     // Opened from the button or console while online: close after 10 minutes
     if (wm.getConfigPortalActive() && connected && s_portalWhy == PortalWhy::Asked
-        && now - s_portalAt > 10UL * 60UL * 1000UL){
+        && since(s_portalAt) > 10UL * 60UL * 1000UL){
         closePortal();
     }
     if (!wm.getConfigPortalActive()){
@@ -384,34 +495,34 @@ void loop(){
             } else {
                 Serial.println("printer: not found, searching again in a minute");
                 s_info.scanFailed = true;
-                s_scanEndAt = now;
+                s_scanEndAt = millis();
                 s_scanDone = false;
             }
         }
         if (s_info.link == Link::Searching && s_info.scanFailed && s_scanTask == nullptr
-            && now - s_scanEndAt > kScanRetryMs){
+            && since(s_scanEndAt) > kScanRetryMs){
             startSearch();
         }
         if (s_wsStarted){
             ws.loop();
             if (s_wsUp){
-                if (now - s_lastBeat > kHeartbeatMs){
-                    s_lastBeat = now;
+                if (since(s_lastBeat) > kHeartbeatMs){
+                    s_lastBeat = millis();
                     sendHeartbeat();
                 }
-                if (now - s_lastRx > kSilenceReconnectMs){
+                if (since(s_lastRx) > kSilenceReconnectMs){
                     Serial.println("printer: silent, reconnecting");
                     ws.disconnect();
                     s_wsUp = false;
-                    s_linkSince = now;
+                    s_linkSince = millis();
                 }
             }
-            if (s_wsUp && s_everData && now - s_lastRx < kOfflineAfterMs){
+            if (s_wsUp && s_everData && since(s_lastRx) < kOfflineAfterMs){
                 s_info.link = Link::Online;
-            } else if (now - (s_wsUp ? s_lastRx : s_linkSince) > kOfflineAfterMs){
+            } else if (since(s_wsUp ? s_lastRx : s_linkSince) > kOfflineAfterMs){
                 s_info.link = Link::Offline;
                 // An address found by the search may have changed (DHCP)
-                if (settings::get().printerAuto && now - s_linkSince > 3UL * 60UL * 1000UL){
+                if (settings::get().printerAuto && since(s_linkSince) > 3UL * 60UL * 1000UL){
                     Serial.println("printer: gone for 3 minutes, searching again");
                     startSearch();
                 }

@@ -406,9 +406,11 @@ void setup(){
 
 void loop(){
     static uint32_t next = millis();
-    const uint32_t now = millis();
-    if (static_cast<int32_t>(next - now) > 0){
-        delay(next - now);   // the rest of the ~33 ms frame
+    // The rest of the ~33 ms frame, serving the setup portal meanwhile: once
+    // per frame is far too slow for a phone's burst of connections
+    while (static_cast<int32_t>(next - millis()) > 0){
+        net::service();
+        delay(1);
     }
     next += kFrameMs;
     if (static_cast<int32_t>(millis() - next) > 200){

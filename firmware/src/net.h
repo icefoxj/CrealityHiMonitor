@@ -36,6 +36,10 @@ struct Info {
 
 void begin();
 void loop();
+// Serves the setup portal while it is open. Its web server takes one step
+// per call and queues only 4 connections, and a phone opens several at
+// once, so the main loop calls this all through the wait between frames.
+void service();
 
 void startPortal();
 void wifiReset();              // forget the network, reboot into the portal

@@ -412,13 +412,14 @@ void job(Canvas& cv, const View& v){
 
     char a[12], b[12];
     if (v.screen == Screen::Printing || v.screen == Screen::Paused){
-        if (v.remainingS >= 0) formatDuration(v.remainingS, a, sizeof(a)); else snprintf(a, sizeof(a), "-:--");
-        pair(cv, "LEFT", c, a, pal::text, 26.0f, kValue);
+        // The finish time is what the user looks for: it gets the big line
+        pair(cv, "ETA", c, v.eta[0] ? v.eta : "--:--", pal::text, 26.0f, kValue);
         if (v.errorCode != 0){
             snprintf(b, sizeof(b), "%d", v.errorCode);
             pair(cv, "ERR", pal::red, b, pal::text, 39.0f, kValueSm);
         } else {
-            pair(cv, "ETA", c, v.eta[0] ? v.eta : "--:--", pal::text, 39.0f, kValueSm);
+            if (v.remainingS >= 0) formatDuration(v.remainingS, a, sizeof(a)); else snprintf(a, sizeof(a), "-:--");
+            pair(cv, "LEFT", c, a, pal::text, 39.0f, kValueSm);
         }
     } else {
         if (v.elapsedS >= 0) formatDuration(v.elapsedS, a, sizeof(a)); else snprintf(a, sizeof(a), "-:--");

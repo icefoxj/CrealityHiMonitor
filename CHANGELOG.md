@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+First run against the printer on hardware: from the setup portal on a phone to a steady live link.
+
+### Changed
+
+- **The finish time (ETA) gets the big line** on the printing and paused screens. The time left moves to the small line under it.
+- **Wi-Fi modem sleep is off.** HM-01 runs on mains power, and dozing slowed both the printer search and the websocket.
+
+### Fixed
+
+- **The setup portal refused connections from phones.** Its web server ran once per ~33 ms frame, and a phone opens several connections at once. It now runs all through the wait between frames.
+- **The printer search missed the printer:**
+  - The search allowed 150 ms per host. First contact with a host waits for ARP, which on Wi-Fi can take several hundred ms.
+  - It now waits 1.5 s per host, with 6 hosts tried at once.
+- **The printer link dropped right after connecting:**
+  - Elapsed times measured against a timestamp from the same pass of the network loop wrapped around to ~49 days.
+  - So a printer just found was declared gone and searched for again, and every message counted as 20 s of silence.
+  - Also, a failed Wi-Fi join closed the setup portal at once.
+
 ## [0.1.0] - 2026-11-13
 
 First release. Unit-tested; the parser and the ETA are checked against a real print on a Creality Hi. On an AtomS3R it boots, opens the setup portal and reads the IMU. The live printer link and the alerts are not yet checked on hardware.
