@@ -84,9 +84,9 @@ If Moonraker does not answer, HM-01 falls back to the printer's own percent and 
 
 ## Install
 
-### From a release
+### Prebuilt binary
 
-Download `CrealityHiMonitor-atoms3r-merged.bin` from the [latest release](https://github.com/icefoxj/CrealityHiMonitor/releases) and write it at `0x0`:
+Every CI run builds the firmware: open the latest green run of the **Firmware** workflow in the [Actions tab](https://github.com/icefoxj/CrealityHiMonitor/actions) and download the `CrealityHiMonitor-firmware` artifact. Tagged versions also go to [Releases](https://github.com/icefoxj/CrealityHiMonitor/releases). Write `CrealityHiMonitor-atoms3r-merged.bin` at `0x0`:
 
 ```bash
 pip install esptool
