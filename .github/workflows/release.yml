@@ -20,8 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # By name: the files land straight in dist/. Without a name, v8 put a
+      # lone artifact in dist/ too, not in dist/<name>/, and v0.1.0 went out
+      # with no binaries.
       - uses: actions/download-artifact@v8
         with:
+          name: CrealityHiMonitor-firmware
           path: dist
       - name: Release notes from CHANGELOG.md
         id: notes
@@ -52,4 +56,5 @@ jobs:
         with:
           name: CrealityHiMonitor ${{ steps.notes.outputs.ver }}
           body_path: notes.md
-          files: dist/CrealityHiMonitor-firmware/*.bin
+          files: dist/*.bin
+          fail_on_unmatched_files: true
