@@ -44,14 +44,14 @@ Vec V(float x, float y){ return {x, y}; }
 // One corner of the bezel, drawn as the top-left corner in a frame centred
 // on the panel. variantA: hazard stripes; otherwise a block and dashes.
 void bezelCorner(Canvas& cv, bool variantA){
-    cv.begin(pal::orange);
+    cv.begin(pal::yellow);
     const Vec bracket[4] = {V(-61.5f, -38.0f), V(-61.5f, -53.0f), V(-53.0f, -61.5f), V(-38.0f, -61.5f)};
     cv.stroke(bracket, 4, 2.0f);
     cv.end();
 
     if (variantA){
         // Three hazard stripes parallel to the chamfer, shortening towards the HUD
-        cv.begin(pal::orange);
+        cv.begin(pal::yellow);
         const float cs[3]  = {-106.0f, -100.0f, -94.0f};
         const float len[3] = {9.0f, 7.0f, 5.0f};
         for (int i = 0; i < 3; i++){
@@ -67,7 +67,7 @@ void bezelCorner(Canvas& cv, bool variantA){
         cv.end();
     } else {
         // A block in the corner and speed dashes along both arms
-        cv.begin(pal::orange);
+        cv.begin(pal::yellow);
         cv.rect(-55.5f, -55.5f, 4.0f, 4.0f);
         cv.end();
         cv.begin(pal::mid);
@@ -245,7 +245,7 @@ void bigPercent(Canvas& cv, int percent, float baseline){
     cv.begin(pal::text);
     drawText(cv, num, x0, baseline, kBig);
     cv.end();
-    cv.begin(pal::orange);
+    cv.begin(pal::yellow);
     drawText(cv, "%", x0 + nw + gap, baseline - kBig.cap + kBigUnit.cap, kBigUnit);
     cv.end();
 }
@@ -314,11 +314,11 @@ void textLine(Canvas& cv, const char* s, float baseline, const TextStyle& st, Co
 // ---------------------------------------------------------------- screens
 
 void splash(Canvas& cv, const View& v){
-    fullRing(cv, pal::orange);
-    band(cv, "HM-01", pal::orange);
-    reticle(cv, V(0, -6.0f), 17.0f, pal::orange, pal::text, 0.0f);
-    chevrons(cv, -31.0f, -6.0f, -1, pal::orange);
-    chevrons(cv, 31.0f, -6.0f, 1, pal::orange);
+    fullRing(cv, pal::yellow);
+    band(cv, "HM-01", pal::yellow);
+    reticle(cv, V(0, -6.0f), 17.0f, pal::yellow, pal::text, 0.0f);
+    chevrons(cv, -31.0f, -6.0f, -1, pal::yellow);
+    chevrons(cv, 31.0f, -6.0f, 1, pal::yellow);
     textLine(cv, "HI MONITOR", 31.0f, kLineSm, pal::text);
     textLine(cv, v.version, 44.0f, kTiny, pal::mid);
 }
@@ -363,10 +363,10 @@ void offline(Canvas& cv, const View& v){
 }
 
 void idle(Canvas& cv, const View& v){
-    quarterRing(cv, pal::orange);
-    band(cv, "READY", pal::orange);
+    quarterRing(cv, pal::yellow);
+    band(cv, "READY", pal::yellow);
     textLine(cv, v.clock[0] ? v.clock : "--:--", 6.0f, kClock, pal::text);
-    rule(cv, 12.5f, pal::orange);
+    rule(cv, 12.5f, pal::yellow);
 
     char nz[12], bd[12];
     if (v.nozzle > -1000) snprintf(nz, sizeof(nz), "%d\xB0", v.nozzle); else snprintf(nz, sizeof(nz), "--");
@@ -377,7 +377,7 @@ void idle(Canvas& cv, const View& v){
     const float w2 = textWidth("B", kLabel) + gap + textWidth(bd, kValueSm);
     float x = -0.5f * (w1 + mid + w2);
     const float base = 27.0f;
-    cv.begin(pal::orange);
+    cv.begin(pal::yellow);
     drawText(cv, "N", x, base, kLabel);
     drawText(cv, "B", x + w1 + mid, base, kLabel);
     cv.end();
@@ -390,11 +390,11 @@ void idle(Canvas& cv, const View& v){
 
 // Printing, paused, done, stopped: the same layout with different colours
 void job(Canvas& cv, const View& v){
-    Color c = pal::orange;
+    Color c = pal::yellow;
     const char* title = "PRINT";
     bool blinkTitle = false;
     switch (v.screen){
-        case Screen::Paused:  c = pal::amber; title = "PAUSED"; blinkTitle = true; break;
+        case Screen::Paused:  c = pal::cyan;  title = "PAUSED"; blinkTitle = true; break;
         case Screen::Done:    c = pal::green; title = "DONE"; break;
         case Screen::Stopped: c = pal::red;   title = "STOP"; break;
         case Screen::Error:   c = pal::red;   title = "ERROR"; blinkTitle = true; break;

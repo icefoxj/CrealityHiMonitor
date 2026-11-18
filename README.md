@@ -67,7 +67,7 @@ Same house style as the printed parts of the other projects (Tab5 stand, OutageA
 - corner brackets, speed dashes, reticles;
 - the chamfered stroke font, here drawn on screen instead of inlaid in plastic.
 
-Orange livery on graphite, with a colour per state: orange printing, amber paused, green done, red stopped or failed, cyan for network screens.
+Yellow livery on graphite, with a colour per state: yellow printing, cyan paused, green done, red stopped or failed, cyan for network screens.
 
 ## Hardware
 

@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **House colour: yellow instead of orange.** The bezel, the title bands and the printing, splash and ready screens are yellow (#FFCC00) on graphite, with dark text on the yellow bands. The paused screen is now cyan (it was amber, too close to the new yellow): yellow printing, cyan paused, green done, red stopped or failed, cyan network screens.
+
 ## [0.1.0] - 2026-11-13
 
 First release, run on hardware next to a Creality Hi:

@@ -115,7 +115,8 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - brackets, speed dashes, reticles;
   - the stroke font in `mechfont.cpp`: glyphs copied from FilamentDryer `cad/mech.py`; `%` and `°` are new.
   - The font has no lower case: screen strings are upper case.
-- **Colours by state:** orange printing, amber paused, green done, red stopped/error, cyan network screens.
+- **House colours:** graphite and grey with yellow #FFCC00 (`pal::yellow`; no orange, user 2026-11-18). Text on yellow is dark (`pal::face`).
+- **Colours by state:** yellow printing (and the splash/ready screens), cyan paused, green done, red stopped/error, cyan network screens. Paused is cyan, not amber, so it cannot be mistaken for printing.
 - **Render time:**
   - About 0.4 ms per frame on the PC with SSE. Expected ~10–20 ms on the ESP32-S3, plus ~6.5 ms to push 32 KB.
   - Keep it there. Check with a host benchmark if you add heavy shapes.
