@@ -46,6 +46,44 @@ bool readInt(JsonVariantConst v, T& out){
     return true;
 }
 
+// Unix times: a float would lose the seconds (24-bit mantissa)
+bool readEpoch(JsonVariantConst v, int64_t& out){
+    if (v.isNull()){
+        return false;
+    }
+    if (v.is<const char*>()){
+        const char* s = v.as<const char*>();
+        char* end = nullptr;
+        const long long n = strtoll(s, &end, 10);
+        if (end == s){
+            return false;
+        }
+        out = n;
+        return true;
+    }
+    out = v.as<int64_t>();
+    return true;
+}
+
+// "X:69.37 Y:69.79 Z:7.56" -> 7.56
+bool readZ(JsonVariantConst v, float& out){
+    const char* s = v | static_cast<const char*>(nullptr);
+    if (!s){
+        return false;
+    }
+    const char* zp = strstr(s, "Z:");
+    if (!zp){
+        return false;
+    }
+    char* end = nullptr;
+    const float z = strtof(zp + 2, &end);
+    if (end == zp + 2){
+        return false;
+    }
+    out = z;
+    return true;
+}
+
 const JsonDocument& crealityFilter(){
     static JsonDocument f;
     static bool built = false;
@@ -67,6 +105,22 @@ const JsonDocument& crealityFilter(){
         f["hostname"] = true;
         f["model"] = true;
         f["ModeCode"] = true;
+        // Details for the larger panels
+        f["printStartTime"] = true;
+        f["realTimeSpeed"] = true;
+        f["realTimeFlow"] = true;
+        f["curFeedratePct"] = true;
+        f["curFlowratePct"] = true;
+        f["modelFanPct"] = true;
+        f["auxiliaryFanPct"] = true;
+        f["caseFanPct"] = true;
+        f["curPosition"] = true;
+        f["usedMaterialLength"] = true;
+        f["boxTemp"] = true;
+        f["targetBoxTemp"] = true;
+        f["maxBoxTemp"] = true;
+        f["maxNozzleTemp"] = true;
+        f["maxBedTemp"] = true;
     }
     return f;
 }
@@ -128,6 +182,22 @@ bool applyCrealityMessage(PrinterStatus& st, const char* data, size_t len, bool*
     }
     copyStr(st.hostname, sizeof(st.hostname), o["hostname"] | static_cast<const char*>(nullptr));
     copyStr(st.model, sizeof(st.model), o["model"] | static_cast<const char*>(nullptr));
+
+    readEpoch(o["printStartTime"], st.startEpoch);
+    readFloat(o["realTimeSpeed"], st.speed);
+    readFloat(o["realTimeFlow"], st.flow);
+    readInt(o["curFeedratePct"], st.feedPct);
+    readInt(o["curFlowratePct"], st.flowPct);
+    readInt(o["modelFanPct"], st.fanPart);
+    readInt(o["auxiliaryFanPct"], st.fanAux);
+    readInt(o["caseFanPct"], st.fanCase);
+    readZ(o["curPosition"], st.z);
+    readInt(o["usedMaterialLength"], st.usedMm);
+    readFloat(o["boxTemp"], st.box);
+    readFloat(o["targetBoxTemp"], st.boxTarget);
+    readInt(o["maxBoxTemp"], st.boxMax);
+    readInt(o["maxNozzleTemp"], st.nozzleMax);
+    readInt(o["maxBedTemp"], st.bedMax);
     st.seen = true;
     return true;
 }

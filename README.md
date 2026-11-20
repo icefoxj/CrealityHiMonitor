@@ -1,16 +1,23 @@
 # CrealityHiMonitor — HM-01
 
-A live print monitor for the **Creality Hi**, on an **M5Stack AtomS3R**. The 24 mm cube sits next to the printer and shows the job's **percent done**, the **time left** and the **finish time (ETA)**. When the job ends it **alerts**: the screen flashes, and it plays a chime if a speaker is fitted. The display is a mech-style HUD that **turns with the cube**: stand it on any side or tilt it, and the dial rotates smoothly to stay upright.
+A live print monitor for the **Creality Hi**, in two builds:
+
+- **M5Stack AtomS3R**: the 24 mm cube sits next to the printer and shows the job's **percent done**, the **time left** and the **finish time (ETA)**. The display is a mech-style HUD that **turns with the cube**: stand it on any side or tilt it, and the dial rotates smoothly to stay upright.
+- **M5Stack CoreS3**: a 320 × 240 [desk dashboard](#m5stack-cores3-dashboard) in the same livery, with **everything the printer reports** about the job: times, layer, Z, temperatures and targets, speed, flow, fans, filament used, the file, the material and the slicer's estimate.
+
+When the job ends it **alerts**: the screen flashes, and it plays a chime if a speaker is fitted (the CoreS3 has one).
 
 ![HM-01 on an AtomS3R, upright and tilted](docs/img/hero.png)
 
 > **Status: v0.1.0, first release.**
-> - The firmware's logic passes 29 unit tests on the host.
+> - The firmware's logic passes 36 unit tests on the host.
 > - The parser and the ETA are checked against a real 2.5 h print on a Creality Hi, replayed in the tests.
 > - On an AtomS3R it boots, reads the IMU and answers the console. The tilt angle matched claude-monitor's in the same position.
 > - **The live link works on hardware:** setup from a phone, Wi-Fi join, printer search, and steady data from a Creality Hi mid-print.
 > - **The alert flash works on hardware**, run from the console (`alert done`).
-> - **Not yet seen on hardware:** an alert raised by a real job end, and the alert sounds.
+> - **Not yet seen on hardware:** an alert raised by a real job end, and the alert sounds on the AtomS3R.
+> - **CoreS3 build (new, not released yet):** on a CoreS3 it was set up from a phone, found the Hi and showed the live dashboard mid-print. It reads its battery, draws a frame in 115–180 ms, and plays the alert chime on its own speaker.
+> - **Not yet seen on the CoreS3:** turning to portrait and upside down, waking on a move, silencing with a knock. The logic is unit-tested, and the normal position was measured on the device.
 > - Every image here is rendered by the firmware's own drawing code.
 
 ## What it shows
@@ -58,6 +65,52 @@ HM-01 follows claude-monitor's AtomS3R pattern:
 - The dial is drawn as vectors: anti-aliased polygons, arcs and the house mech stroke font.
 - Turning it means turning the vertices and drawing again, not rotating a bitmap. Text stays sharp at 37° as well as at 90°.
 
+## M5Stack CoreS3 dashboard
+
+![HM-01 on an M5Stack CoreS3, mid-print](docs/img/cores3.png)
+
+The same firmware, built for the CoreS3 (`pio run -e cores3`), lays the job out on a 320 × 240 dashboard. The screen above shows a real job on the Hi. Percent and ETA stay the largest things on it.
+
+| Part | What it shows |
+|---|---|
+| **Title band** | the state (PRINT, HEAT, PAUSED, DONE, STOP, ERROR); a code from the printer, if any; the **battery** (%, a bolt while charging, red at 15 % or less; hidden when no battery is fitted); the Wi-Fi signal; the clock |
+| **Gauge** | the 40-segment ring and the percent done (the same estimate as the AtomS3R), the layer |
+| **Panel** | **ETA** big, **LEFT** time; print **TIME** so far, **TOTAL** (time so far + time left), **START** clock; **LAYER**, **Z** height, **FILE** position %; a layer bar |
+| **Tiles** | **NOZZLE** and **BED**: temperature, target (`/220`, or OFF) and a gauge with the target marked; **SPEED** (mm/s) and **FLOW** (mm³/s) in real time, with the speed and flow overrides (%) |
+| **Lines** | part, auxiliary and case **fans** (%), **filament** used (m), the chamber temperature on printers that have a sensor; the **job name**, the **material** and the slicer's estimate (**EST**), read from Creality Print's file name; the printer's name |
+
+**Printer codes.** The printer reports a code (`err.errcode`) in its status. Where the job stopped on it (the ERROR screen, a pause), it shows in red as `ERR 2839`. During a normal print it is a notice and shows in grey as `CODE 500`: the Hi reports 500 through whole normal prints, which Creality's error table lists as a prompt from its AI print detection.
+
+When the job ends, the panel turns to the end screen: the time it **ENDED**, the total **TIME**, the **START**, the slicer's estimate, the filament used, the layers, the material and, after a failure, the error **CODE**.
+
+| Printing | Done |
+|---|---|
+| ![Printing](docs/img/cores3-printing.png) | ![Done](docs/img/cores3-done.png) |
+| **Ready** | **Setup** |
+| ![Ready](docs/img/cores3-idle.png) | ![Setup](docs/img/cores3-setup.png) |
+
+All CoreS3 screens are on [one sheet](docs/img/cores3-screens.png).
+
+**It turns with the device.** The CoreS3's accelerometer (BMI270) tells which way is up:
+
+- upside down, the dashboard turns over;
+- stood on either side, it switches to a portrait layout with the same data.
+
+| Portrait, printing | Portrait, done |
+|---|---|
+| ![Portrait, printing](docs/img/cores3-portrait-printing.png) | ![Portrait, done](docs/img/cores3-portrait-done.png) |
+
+It turns only once the device has rested in the new position for about half a second, and it holds while the device lies flat. `autorotate off` keeps it in the normal landscape position. All portrait screens are on [one sheet](docs/img/cores3-portrait-screens.png).
+
+**On the device:**
+
+- **The touch screen is the button:** tap and hold work as on the AtomS3R's button (see [Setup](#setup)).
+- **Sound:** the CoreS3 plays the [alerts](#alerts) on its own speaker.
+- **A knock on the case silences an alert**, as a tap on the screen does.
+- **Moving it wakes it:** when the screen is dimmed or dark, picking the device up or turning it lights it again. The shake of a finger tapping the screen does not count, so tapping still dims it.
+- **Redraws:** the frame is drawn in strips from internal RAM, in 115–180 ms. The printer's numbers change several times a second, so the screen shows them at most every 300 ms; a new screen, a turn and an alert's flash are drawn at once.
+- **The IMU** is read by its own task, 200 times a second: a knock lasts only a few milliseconds.
+
 ## Mech look
 
 Same house style as the printed parts of the other projects (Tab5 stand, OutageAlarm, FilamentDryer, CrealityHiDrawer):
@@ -73,30 +126,32 @@ Yellow livery on graphite, with a colour per state: yellow printing, cyan paused
 
 | Part | Notes |
 |---|---|
-| **M5Stack AtomS3R** (ESP32-S3, 0.85" 128 × 128 IPS, BMI270 IMU, button under the screen) | the whole device |
+| **M5Stack AtomS3R** (ESP32-S3, 0.85" 128 × 128 IPS, BMI270 IMU, button under the screen) | the cube with the turning HUD |
+| or **M5Stack CoreS3** (ESP32-S3, 2.0" 320 × 240 IPS touch screen, speaker) | the [desk dashboard](#m5stack-cores3-dashboard) |
 | USB-C cable and any 5 V USB supply | power |
-| Optional: **M5Stack Atomic Echo Base** (speaker), or a **piezo buzzer** on the Grove port | sound for the [alerts](#alerts); the AtomS3R has no speaker |
+| Optional, AtomS3R only: **M5Stack Atomic Echo Base** (speaker), or a **piezo buzzer** on the Grove port | sound for the [alerts](#alerts); the AtomS3R has no speaker |
 
-The printer and the AtomS3R must be on the same network. HM-01 reads one stock interface of the printer, the **Creality websocket on port 9999**: the one Creality Print uses. It gives the state, times, layers, temperatures and errors. No root, no printer settings to change. Protocol notes: [docs/creality-websocket.md](docs/creality-websocket.md).
+The printer and HM-01 must be on the same network. HM-01 reads one stock interface of the printer, the **Creality websocket on port 9999**: the one Creality Print uses. It gives the state, times, layers, temperatures and errors. No root, no printer settings to change. Protocol notes: [docs/creality-websocket.md](docs/creality-websocket.md).
 
 ## Install
 
 ### Prebuilt binary
 
-Download `CrealityHiMonitor-atoms3r-merged.bin` from the [latest release](https://github.com/icefoxj/CrealityHiMonitor/releases/latest). Builds of the newest `main` are in the `CrealityHiMonitor-firmware` artifact of the latest green **Firmware** run in the [Actions tab](https://github.com/icefoxj/CrealityHiMonitor/actions). Write the merged image at `0x0`:
+Download the image for your board from the [latest release](https://github.com/icefoxj/CrealityHiMonitor/releases/latest): `CrealityHiMonitor-atoms3r-merged.bin` or `CrealityHiMonitor-cores3-merged.bin`. Builds of the newest `main` are in the `CrealityHiMonitor-firmware` artifact of the latest green **Firmware** run in the [Actions tab](https://github.com/icefoxj/CrealityHiMonitor/actions). Write the merged image at `0x0`:
 
 ```bash
 pip install esptool
-esptool.py --chip esp32s3 write_flash 0x0 CrealityHiMonitor-atoms3r-merged.bin
+esptool.py --chip esp32s3 write_flash 0x0 CrealityHiMonitor-atoms3r-merged.bin   # or ...-cores3-merged.bin
 ```
 
-If the port is not found, hold the AtomS3R's reset button until the green LED lights, to enter download mode. Then run the command again.
+If the port is not found, enter download mode and run the command again. On the AtomS3R, hold the reset button until the green LED lights. On the CoreS3, hold the reset button on its side for about 3 s, until the green LED lights.
 
 ### From source
 
 ```bash
 cd firmware
-pio run -e atoms3r -t upload     # PlatformIO
+pio run -e atoms3r -t upload     # AtomS3R (PlatformIO)
+pio run -e cores3 -t upload      # CoreS3
 pio device monitor               # serial console, 115200
 ```
 
@@ -116,11 +171,11 @@ On the portal's **Setup** page:
 - **Printer address**: set it there to skip the search (blank = search).
 - **Time zone**: a POSIX TZ string for the clock and the ETA. The default is Lisbon/London, `WET0WEST,M3.5.0/1,M10.5.0`. Examples: `CET-1CEST,M3.5.0,M10.5.0/3` (central Europe), `<-03>3` (São Paulo), `EST5EDT,M3.2.0,M11.1.0` (New York).
 
-**Button** (the screen itself):
+**Button**: on the AtomS3R, the screen itself is the button; on the CoreS3, touch the screen.
 
 | Press | Effect |
 |---|---|
-| Click | Silences an alert. Otherwise: on a DONE / STOP / ERROR screen, the first click dismisses it; then brightness: bright → dim → off → bright |
+| Click / tap | Silences an alert. Otherwise: on a DONE / STOP / ERROR screen, the first click dismisses it; then brightness: bright → dim → off → bright |
 | Hold 3 s | Open the setup portal again (Wi-Fi, printer, time zone) |
 
 The READY screen dims by itself after 15 minutes.
@@ -131,20 +186,30 @@ Any serial terminal at 115200 baud on the USB port (`pio device monitor`):
 
 | Command | Effect |
 |---|---|
-| `status` | one line with the link, the printer's raw numbers, the estimate, the tilt angle and the IMU reading |
+| `status` | one line with the link, the printer's raw numbers, the estimate, the tilt angle and the IMU reading, and the last frame's draw time (`render_ms`) |
 | `printer <ip>` / `printer auto` | set the printer address / search again |
 | `tz <POSIX TZ>` | time zone |
 | `calibrate rot=<0-3> sign=<1\|-1> offset=<deg>` / `calibrate reset` | orientation, saved |
 | `bright <0-255>` | backlight level, saved |
 | `sound on\|off`, `volume <0-255>` | alert sound, saved |
-| `buzzer <gpio>` / `buzzer off` | piezo buzzer pin when there is no Echo Base, saved |
+| `buzzer <gpio>` / `buzzer off` | AtomS3R: piezo buzzer pin when there is no Echo Base, saved |
 | `beep` | play the "job done" chime (a speaker test) |
 | `alert done` / `alert attention` / `alert off` | run a whole alert now, flash and sound, to check it / stop it |
+| `autorotate on\|off` | CoreS3: turn the dashboard with the device, saved (on by default) |
 | `setup` | open the setup portal |
 | `wifi reset` | forget the Wi-Fi network and reboot into setup |
-| `version`, `reboot`, `help` | |
+| `version`, `reboot`, `help` | `version` names the board (`atoms3r` or `cores3`) |
 
 ## Orientation
+
+**CoreS3.** `calibrate` sets the turning:
+
+- `rot` = the display rotation that is upright in the normal position (default 1);
+- `sign` and `offset` map the accelerometer to the quarter the device is turned (defaults −1 and 90°, measured on a CoreS3).
+
+`status` shows `orient=` (the angle in degrees) and `quarter=`. If the dashboard turns the wrong way when the device is stood on a side, run `calibrate sign=1`. If it is upside down in the normal position, add 180 to the offset.
+
+The rest of this section is about the AtomS3R.
 
 The defaults are the ones claude-monitor verified on an AtomS3R, with the same M5Unified IMU mapping:
 
@@ -167,11 +232,11 @@ If the dial is not upright on yours, calibrate it from the console:
 | Printer **stopped on an error**, or **paused itself** with an error code (e.g. filament run-out) | the screen flashes while it lasts, up to 5 min | an alarm every 30 s, up to 5 min |
 | Job cancelled (STOP) | no alert: you did it | none |
 
-A click on the button silences an alert.
+A click on the button silences an alert. On the CoreS3, a tap on the screen or a knock on the case does.
 
 To see one without waiting for a job to end, run `alert done` (or `alert attention`) on the console. It plays out in full whatever the screen shows: the flash, and the sound if a speaker is fitted. `alert off` or a click stops it.
 
-**Sound.** The AtomS3R has no speaker. HM-01 plays the alerts on either:
+**Sound.** The CoreS3 plays the alerts on its own speaker. The AtomS3R has no speaker; HM-01 plays the alerts on either:
 
 - an **Atomic Echo Base** stacked under the Atom: found automatically at boot (its codec answers on I2C);
 - a **piezo buzzer** on a free pin. Wire it to the Grove port, signal on G2 (yellow) or G1 (white), and run `buzzer 2` (or `buzzer 1`) once on the console. G5–G8, G38 and G39 on the bottom header work too.
@@ -203,8 +268,9 @@ The real print is replayed in the unit tests. Details: [docs/creality-websocket.
 
 ```bash
 cd firmware
-pio test -e native          # 28 unit tests on the host (needs gcc)
-pio run -e atoms3r          # firmware
+pio test -e native          # 36 unit tests on the host (needs gcc)
+pio run -e atoms3r          # firmware, AtomS3R
+pio run -e cores3           # firmware, CoreS3
 
 # Screens -> docs/img (needs g++ and Pillow). Same drawing code as the device.
 python tools/previews.py
@@ -212,14 +278,18 @@ python tools/previews.py
 
 ```
 firmware/
-  src/                 hardware glue: main.cpp (display, IMU, button, console), net.cpp (Wi-Fi portal,
-                       printer search, websocket), sound.cpp (Echo Base / buzzer), settings.cpp (NVS), config.h
+  src/                 hardware glue: main.cpp (display, IMU, button or touch, console), net.cpp (Wi-Fi
+                       portal, printer search, websocket), sound.cpp (speaker / Echo Base / buzzer),
+                       motion.cpp (CoreS3 IMU task), settings.cpp (NVS), config.h (HM_BOARD_CORES3
+                       selects the CoreS3)
   lib/hm_core/src/     plain C++, tested on the host:
     printer.*          Creality websocket parsing, state codes
     eta.*              percent and time-left estimate
     alert.*            end-of-job / attention alerts, melodies
     job.*              printer state -> screen, end-of-job latch
-    screens.*          the bezel and the HUD screens
+    screens.*          the bezel and the HUD screens (AtomS3R)
+    dash.*             the 320 x 240 dashboard, landscape and portrait (CoreS3)
+    orient.*           quarter-turn orientation, knock and move detection (CoreS3)
     gfx.*              anti-aliased vector drawing into an RGB565 buffer
     mechfont.*         the mech stroke font
     tilt.*             accelerometer -> smoothed HUD angle (from claude-monitor)
@@ -234,7 +304,8 @@ CI (`.github/workflows/firmware.yml`) runs the tests and builds the firmware on 
 ## Known limitations
 
 - The setup portal and the printer interfaces have no authentication: keep HM-01 and the printer on a trusted network.
-- The printer search covers the /24 around the AtomS3R's own address. On other networks, set the address.
+- The printer search covers the /24 around HM-01's own address. On other networks, set the address.
+- The Hi reports `err.errcode` 500 (an AI detection prompt in Creality's table) during some normal prints. The CoreS3 shows it in grey as `CODE 500`; the AtomS3R shows `ERR 500` in place of LEFT.
 - Only the Creality Hi has been tested. Other Creality printers with the same websocket (K1, K1C, K1 Max, K2) should work.
 - The ETA is only as good as Creality's time estimate: it was within 2 % on the measured print. A printer that runs much slower than the estimate shows 99 % and the file-based tail at the end.
 

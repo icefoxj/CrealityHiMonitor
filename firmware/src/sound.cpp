@@ -20,15 +20,23 @@ bool              s_started = false;   // the speaker task runs (tone() starts i
 }  // namespace
 
 bool validBuzzerPin(int pin){
+#if defined(HM_BOARD_CORES3)
+    (void)pin;
+    return false;   // it has a speaker
+#else
     switch (pin){
         case 1: case 2: case 5: case 6: case 7: case 8: case 38: case 39:
             return true;
         default:
             return false;
     }
+#endif
 }
 
 void prepare(m5::M5Unified::config_t& cfg){
+#if defined(HM_BOARD_CORES3)
+    (void)cfg;   // the built-in speaker is in M5Unified's default config
+#else
     // The Echo Base's I2C is on the bottom header, G38 (SDA) / G39 (SCL)
     Wire1.begin(38, 39, 100000);
     Wire1.beginTransmission(kEs8311Addr);
@@ -37,10 +45,20 @@ void prepare(m5::M5Unified::config_t& cfg){
     if (s_echo){
         cfg.external_speaker.atomic_echo = 1;
     }
+#endif
 }
 
 void reconfigure(){
     const Settings& st = settings::get();
+#if defined(HM_BOARD_CORES3)
+    if (!s_started){
+        s_started = M5.Speaker.begin();
+    }
+    s_out = s_started ? Output::Speaker : Output::None;
+    snprintf(s_desc, sizeof(s_desc), s_started ? "speaker" : "none");
+    M5.Speaker.setVolume(st.volume);
+    return;
+#endif
     if (s_echo){
         s_out = Output::EchoBase;
         snprintf(s_desc, sizeof(s_desc), "echo-base");

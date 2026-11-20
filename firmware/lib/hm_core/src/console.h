@@ -16,6 +16,7 @@
 //   buzzer <gpio>|off            piezo buzzer pin, when there is no Echo Base (saved)
 //   beep                         play the "job done" sound (a speaker test)
 //   alert done|attention|off     run an alert now, flash and sound (a test), or stop it
+//   autorotate on|off            CoreS3: turn the dashboard with the device (saved)
 //   setup                       open the Wi-Fi setup portal
 //   wifi reset                   forget the Wi-Fi network and reboot into setup
 //   reboot
@@ -38,6 +39,7 @@ enum class Cmd {
     Buzzer,      // value = GPIO, -1 = off
     Beep,
     Alert,       // value = 1 done, 2 attention, 0 off (the AlertKind values)
+    AutoRotate,  // value = 1 on, 0 off
     Setup,
     WifiReset,
     Reboot,
@@ -56,7 +58,7 @@ struct Command {
     int   sign      = 1;
     bool  hasOffset = false;
     float offsetDeg = 0.0f;
-    // bright, sound, volume, buzzer, alert
+    // bright, sound, volume, buzzer, alert, autorotate
     int   value  = 0;
 };
 

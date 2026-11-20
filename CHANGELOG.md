@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **M5Stack CoreS3 build** (`pio run -e cores3`, release image `CrealityHiMonitor-cores3-merged.bin`): a 320 × 240 dashboard in the house mech livery, with everything the printer reports about the job:
+  - percent (40-segment gauge) and ETA, the largest things on screen; time left, print time, total, start time;
+  - layer, Z height, file position, a layer bar;
+  - nozzle and bed temperatures with their targets, speed and flow in real time with their overrides, the three fans, filament used, the chamber on printers that have a sensor;
+  - the job name, material and slicer estimate, read from Creality Print's file name;
+  - end screens with the end time, total time, filament and, after a failure, the error code.
+- On the CoreS3, the touch screen is the button (tap, hold 3 s for setup) and the alerts play on its own speaker.
+- CoreS3: a **battery** indicator in the title band (%, a bolt while charging, red at 15 % or less), from the power chip every 5 s; `status` adds `bat`, `chg` and `batmv`.
+- CoreS3: a printer code shows in grey as `CODE 500` during a normal print, and in red as `ERR` only where the job stopped (error, pause). The Hi reports 500, an AI detection prompt, through whole normal prints.
+- CoreS3 motion, from its accelerometer (BMI270), read 200 times a second by its own task:
+  - **the dashboard turns with the device:** upside down it turns over; stood on a side it switches to a **portrait layout** (240 × 320) with the same data. It turns once the device has rested half a second in the new position, and holds while it lies flat. `autorotate on|off` (saved);
+  - **moving it wakes it:** picking it up or turning it lights a dimmed or dark screen; the shake of a finger on the screen does not count;
+  - **a knock on the case silences an alert.**
+  - `status` adds `quarter`, `orient`, `taps` and `moves`.
+- The parser reads more of the printer's websocket: start time, real-time speed and flow, overrides, fans, Z, filament used, chamber and temperature limits. See `docs/creality-websocket.md`.
+- `status` reports the last frame's draw time (`render_ms`); `version` names the board.
+
 ### Changed
 
 - **House colour: yellow instead of orange.** The bezel, the title bands and the printing, splash and ready screens are yellow (#FFCC00) on graphite, with dark text on the yellow bands. The paused screen is now cyan (it was amber, too close to the new yellow): yellow printing, cyan paused, green done, red stopped or failed, cyan network screens.

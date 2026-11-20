@@ -458,7 +458,21 @@ bool View::operator==(const View& o) const {
         && layer == o.layer && layers == o.layers && nozzle == o.nozzle && bed == o.bed
         && heating == o.heating && errorCode == o.errorCode
         && strcmp(line1, o.line1) == 0 && strcmp(line2, o.line2) == 0 && strcmp(line3, o.line3) == 0
-        && strcmp(version, o.version) == 0 && alert == o.alert && blink == o.blink && spin == o.spin;
+        && strcmp(version, o.version) == 0 && alert == o.alert && blink == o.blink && spin == o.spin
+        && d == o.d;
+}
+
+bool Details::operator==(const Details& o) const {
+    return strcmp(job, o.job) == 0 && strcmp(material, o.material) == 0 && sliceS == o.sliceS
+        && totalS == o.totalS && strcmp(start, o.start) == 0
+        && nozzleTarget == o.nozzleTarget && bedTarget == o.bedTarget
+        && nozzleMax == o.nozzleMax && bedMax == o.bedMax
+        && chamber == o.chamber && chamberTarget == o.chamberTarget
+        && speed == o.speed && flow10 == o.flow10 && feedPct == o.feedPct && flowPct == o.flowPct
+        && fanPart == o.fanPart && fanAux == o.fanAux && fanCase == o.fanCase
+        && z100 == o.z100 && usedDm == o.usedDm && filePct == o.filePct
+        && strcmp(printer, o.printer) == 0 && strcmp(model, o.model) == 0 && strcmp(ip, o.ip) == 0
+        && wifiBars == o.wifiBars && battery == o.battery && charging == o.charging;
 }
 
 bool animates(const View& v){

@@ -38,6 +38,43 @@ enum class Screen : uint8_t {
 
 const char* screenName(Screen s);
 
+// Job and printer details for the larger panels (the CoreS3 dashboard).
+// The AtomS3R HUD does not show them. Values are rounded to what a panel
+// shows, so a redraw happens only when a shown digit changes. Strings are
+// upper case; empty / negative / -1000 means "not known".
+struct Details {
+    char    job[32]       = "";     // job name, from the file name
+    char    material[10]  = "";     // "PLA", from the file name
+    int32_t sliceS        = -1;     // the slicer's estimate, from the file name
+    int32_t totalS        = -1;     // print time so far + time left
+    char    start[8]      = "";     // wall-clock time the job started
+    int     nozzleTarget  = -1000;  // degrees C
+    int     bedTarget     = -1000;
+    int     nozzleMax     = -1;     // the printer's limits, for the gauges
+    int     bedMax        = -1;
+    int     chamber       = -1000;  // -1000: no chamber sensor
+    int     chamberTarget = -1000;
+    int     speed         = -1;     // mm/s, real time
+    int     flow10        = -1;     // mm3/s x 10, real time
+    int     feedPct       = -1;     // speed override %
+    int     flowPct       = -1;     // flow override %
+    int     fanPart       = -1;     // %
+    int     fanAux        = -1;
+    int     fanCase       = -1;
+    int     z100          = -1;     // nozzle height, 1/100 mm
+    int     usedDm        = -1;     // filament used, 1/10 m
+    int     filePct       = -1;     // position in the G-code file, %
+    char    printer[20]   = "";     // "HI-5EBC"
+    char    model[10]     = "";     // "F018"
+    char    ip[16]        = "";     // our own address
+    int8_t  wifiBars      = -1;     // 0..4, -1 unknown
+    int8_t  battery       = -1;     // our own battery, 0..100 %; -1 none (or no battery fitted)
+    bool    charging      = false;
+
+    bool operator==(const Details& o) const;
+    bool operator!=(const Details& o) const { return !(*this == o); }
+};
+
 // Everything a screen shows. Strings are upper case (the font has no lower
 // case); empty means "not known".
 struct View {
@@ -60,6 +97,7 @@ struct View {
     bool    alert      = false;  // an alert is on: the ring and band flash
     uint8_t blink      = 0;      // animation phase, advanced by the caller
     uint8_t spin       = 0;      // spinner position 0..39
+    Details d;                   // the larger panels only
 
     // Same content (ignores nothing: the caller bumps blink/spin only when
     // the screen animates)

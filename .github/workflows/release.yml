@@ -47,10 +47,12 @@ jobs:
 
           | File | Contents |
           |---|---|
-          | `CrealityHiMonitor-atoms3r-merged.bin` | firmware for the M5Stack AtomS3R, full image: write it at `0x0` |
-          | `CrealityHiMonitor-atoms3r-app.bin` | the application only: write it at `0x10000` over an existing install (keeps the settings) |
+          | `CrealityHiMonitor-atoms3r-merged.bin` | firmware for the M5Stack AtomS3R (round HUD), full image: write it at `0x0` |
+          | `CrealityHiMonitor-atoms3r-app.bin` | AtomS3R, the application only: write it at `0x10000` over an existing install (keeps the settings) |
+          | `CrealityHiMonitor-cores3-merged.bin` | firmware for the M5Stack CoreS3 (320 x 240 dashboard), full image: write it at `0x0` |
+          | `CrealityHiMonitor-cores3-app.bin` | CoreS3, the application only: write it at `0x10000` |
 
-          Flash: `esptool.py --chip esp32s3 write_flash 0x0 CrealityHiMonitor-atoms3r-merged.bin`
+          Flash: `esptool.py --chip esp32s3 write_flash 0x0 CrealityHiMonitor-<board>-merged.bin`
           EOF
       - uses: softprops/action-gh-release@v3
         with:

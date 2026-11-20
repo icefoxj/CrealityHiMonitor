@@ -1,13 +1,20 @@
-// HM-01: live print status of a Creality Hi on an M5Stack AtomS3R.
+// HM-01: live print status of a Creality Hi, on an M5Stack AtomS3R or an
+// M5Stack CoreS3.
 //
-// The 128x128 panel shows a fixed bezel and a round HUD that turns with
-// the cube (accelerometer, smoothed: the claude-monitor AtomS3R pattern).
+// - AtomS3R: the 128x128 panel shows a fixed bezel and a round HUD that
+//   turns with the cube (accelerometer, smoothed: the claude-monitor
+//   AtomS3R pattern).
+// - CoreS3 (build flag HM_BOARD_CORES3): a 320x240 dashboard with every
+//   detail the printer sends; the touch screen is the button, the built-in
+//   speaker plays the alerts.
+//
 // Data comes from the printer's Creality websocket (port 9999). See
 // README.md.
 //
 // Board-independent logic (parsing, ETA, screens, drawing, tilt filter,
 // console parser) is in lib/hm_core and tested on the host; this file wires
-// it to the hardware: display, IMU, button, backlight, serial console.
+// it to the hardware: display, IMU, button or touch, backlight, serial
+// console.
 
 #include <M5Unified.h>
 #include <WiFi.h>
@@ -19,10 +26,13 @@
 #include "alert.h"
 #include "config.h"
 #include "console.h"
+#include "dash.h"
 #include "eta.h"
 #include "gfx.h"
 #include "job.h"
+#include "motion.h"
 #include "net.h"
+#include "orient.h"
 #include "screens.h"
 #include "settings.h"
 #include "sound.h"
@@ -32,9 +42,56 @@ namespace {
 
 constexpr float kPi = 3.14159265f;
 
-hm::Color*   g_fb   = nullptr;   // 128x128 RGB565, 32 KB
-uint8_t*     g_mask = nullptr;   // 128x128 coverage, 16 KB
+#if defined(HM_BOARD_CORES3)
+constexpr int kFbW = hm::kDashW;        // a strip of the frame (320 wide; portrait uses 240 of it)
+constexpr int kFbH = kStripRows;
+#else
+constexpr int kFbW = hm::kScreenSize;   // the whole 128x128 frame
+constexpr int kFbH = hm::kScreenSize;
+#endif
+
+hm::Color*   g_fb   = nullptr;   // kFbW x kFbH RGB565
+uint8_t*     g_mask = nullptr;   // kFbW x kFbH coverage
 hm::Canvas*  g_canvas = nullptr;
+uint32_t     g_renderMs = 0;     // the last frame: draw + push
+uint32_t     g_renderAt = 0;     // millis() of the last frame
+
+#if defined(HM_BOARD_CORES3)
+int8_t   g_battery   = -1;       // 0..100 %, -1 no battery
+bool     g_charging  = false;
+int      g_batteryMv = 0;
+bool     g_batteryRead = false;  // read at least once...
+uint32_t g_batteryAt = 0;        // ...last at this millis()
+
+// The power chip over I2C: every few seconds, not every frame
+void pollBattery(uint32_t nowMs){
+    if (g_batteryRead && nowMs - g_batteryAt < kBatteryPollMs){
+        return;
+    }
+    g_batteryRead = true;
+    g_batteryAt = nowMs;
+    g_batteryMv = M5.Power.getBatteryVoltage();
+    const int level = M5.Power.getBatteryLevel();
+    // No battery fitted: no lithium cell reads under 3 V
+    g_battery = (g_batteryMv < 3000 || level < 0) ? -1 : static_cast<int8_t>(level > 100 ? 100 : level);
+    g_charging = M5.Power.isCharging() == m5::Power_Class::is_charging;
+}
+
+// Orientation: the display turns by quarters with the device (landscape
+// either way up, portrait on either side); one canvas per shape, over the
+// same strip buffers
+hm::Canvas*      g_canvasL = nullptr;   // 320 x kStripRows
+hm::Canvas*      g_canvasP = nullptr;   // 240 x kStripRows
+bool             g_portrait = false;
+hm::Orient       g_orient;
+hm::OrientConfig g_orientCfg;
+uint32_t         g_taps = 0;            // the motion counters last seen
+uint32_t         g_moves = 0;
+bool             g_movePending = false; // a move waiting to be judged...
+uint32_t         g_moveAt = 0;          // ...seen then
+bool             g_touched = false;     // a touch was seen...
+uint32_t         g_touchAt = 0;         // ...last at this millis()
+#endif
 
 hm::Tilt       g_tilt;
 hm::TiltConfig g_tiltCfg;
@@ -57,15 +114,43 @@ enum class Lamp : uint8_t { Bright, Dim, Off };
 Lamp     g_lamp = Lamp::Bright;
 uint8_t  g_brightness = 0xFF;    // applied value (0xFF = not yet)
 uint32_t g_idleSince = 0;
-bool     g_holdLatched = false;
+#if !defined(HM_BOARD_CORES3)
+bool     g_holdLatched = false;   // the button's hold opened the portal: ignore its release
+#endif
 
 uint8_t defaultRotation(){
     return static_cast<uint8_t>((M5.Display.getRotation() + kBootRotationOffset) & 3);
 }
 
+#if defined(HM_BOARD_CORES3)
+// The calibrated upright rotation plus the quarter the device is turned
+void applyRotation(){
+    const Settings& s = settings::get();
+    const int q = s.autoRotate ? g_orient.quarter() : 0;
+    M5.Display.setRotation(static_cast<uint8_t>((s.rotation + q) & 3));
+    g_portrait = M5.Display.width() < M5.Display.height();
+    if (g_canvasL){
+        g_canvas = g_portrait ? g_canvasP : g_canvasL;
+    }
+    g_haveDrawn = false;
+}
+#endif
+
 void applyCalibration(){
     const Settings& s = settings::get();
+#if defined(HM_BOARD_CORES3)
+    // rot = the rotation that is upright in the normal pose; sign and
+    // offset map the gravity vector to the quarter the device is turned
+    g_orientCfg.sign   = s.sign;
+    g_orientCfg.offset = s.offsetDeg * kPi / 180.0f;
+    float gx, gy, gz;
+    if (s.autoRotate && motion::gravity(&gx, &gy, &gz)){
+        g_orient.snap(gx, gy, gz, g_orientCfg);   // the new mapping at once
+    }
+    applyRotation();
+#else
     M5.Display.setRotation(s.rotation);
+#endif
     g_tiltCfg.angleSign   = s.sign;
     g_tiltCfg.angleOffset = s.offsetDeg * kPi / 180.0f;
     g_haveDrawn = false;
@@ -153,14 +238,43 @@ hm::View buildView(uint32_t nowMs){
     } else if (v.screen != hm::Screen::Setup && v.screen != hm::Screen::Linking){
         v.spin = 0;
     }
+#if defined(HM_BOARD_CORES3)
+    // Our own link, in the dashboard's header and footer
+    if (WiFi.status() == WL_CONNECTED){
+        snprintf(v.d.ip, sizeof(v.d.ip), "%s", WiFi.localIP().toString().c_str());
+        const int rssi = WiFi.RSSI();
+        v.d.wifiBars = rssi > -55 ? 4 : rssi > -65 ? 3 : rssi > -75 ? 2 : rssi > -85 ? 1 : 0;
+    } else {
+        v.d.wifiBars = 0;
+    }
+    v.d.battery  = g_battery;
+    v.d.charging = g_charging;
+    // The spinner steps at the dashboard's frame pace
+    if (v.screen == hm::Screen::Setup || v.screen == hm::Screen::Linking){
+        v.spin = static_cast<uint8_t>((nowMs / kDashMinMs) % hm::kRingSegments);
+    }
+#else
+    v.d = hm::Details();   // the HUD shows none: no redraws when they change
+#endif
     return v;
 }
 
 void render(const hm::View& v){
+    const uint32_t t0 = millis();
+#if defined(HM_BOARD_CORES3)
+    const int w = g_portrait ? hm::kDashH : hm::kDashW;
+    const int h = g_portrait ? hm::kDashW : hm::kDashH;
+    for (int top = 0; top < h; top += kFbH){
+        hm::drawDash(*g_canvas, v, top, g_portrait);
+        M5.Display.pushImage(0, top, w, kFbH, reinterpret_cast<const lgfx::rgb565_t*>(g_fb));
+    }
+#else
     hm::drawScreen(*g_canvas, v, g_tilt.angle);
     g_tilt.drawn = g_tilt.angle;
-    M5.Display.pushImage(0, 0, hm::kScreenSize, hm::kScreenSize,
-                         reinterpret_cast<const lgfx::rgb565_t*>(g_fb));
+    M5.Display.pushImage(0, 0, kFbW, kFbH, reinterpret_cast<const lgfx::rgb565_t*>(g_fb));
+#endif
+    g_renderAt = millis();
+    g_renderMs = g_renderAt - t0;
 }
 
 // ---------------------------------------------------------------- backlight
@@ -200,7 +314,7 @@ void sendStatus(){
     Serial.printf("STATUS fw=%s link=%s wifi=%s ip=%s printer=%s%s phase=%s state=%d file_pct=%d"
                   " left=%ld job=%ld layer=%d/%d pct=%d eta_left=%ld total=%ld%s"
                   " screen=%s angle=%.1f rot=%u sign=%d offset=%.1f ax=%.2f ay=%.2f az=%.2f"
-                  " tz=%s sound=%s%s alert=%d heap=%u msgs=%lu\n",
+                  " tz=%s sound=%s%s alert=%d heap=%u msgs=%lu render_ms=%lu",
                   FW_VERSION, net::linkName(ni.link), ni.ssid[0] ? ni.ssid : "-", ni.ip[0] ? ni.ip : "-",
                   ni.printer[0] ? ni.printer : "-", s.printerAuto ? "(found)" : "",
                   hm::phaseName(hm::phaseOf(ps)), ps.state, ps.progress,
@@ -209,11 +323,20 @@ void sendStatus(){
                   static_cast<long>(g_estimator.total()), g_estimate.overrun ? "(overrun)" : "", hm::screenName(g_drawn.screen), g_tilt.angle * 180.0f / kPi,
                   s.rotation, s.sign < 0 ? -1 : 1, s.offsetDeg, g_ax, g_ay, g_az, s.tz,
                   sound::describe(), s.muted ? "(muted)" : "", static_cast<int>(g_alerts.kind()),
-                  static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned long>(ni.messages));
+                  static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned long>(ni.messages),
+                  static_cast<unsigned long>(g_renderMs));
+#if defined(HM_BOARD_CORES3)
+    Serial.printf(" bat=%d chg=%d batmv=%d quarter=%d autorot=%d orient=%.0f taps=%lu moves=%lu",
+                  g_battery, g_charging ? 1 : 0, g_batteryMv, g_orient.quarter(), s.autoRotate ? 1 : 0,
+                  g_orient.angle() * 180.0f / kPi, static_cast<unsigned long>(g_taps),
+                  static_cast<unsigned long>(g_moves));
+#endif
+    Serial.print("\n");
 }
 
 void sendVersion(){
-    Serial.printf("VERSION fw=%s board=atoms3r unit=%s idf=%s\n", FW_VERSION, kUnitCode, esp_get_idf_version());
+    Serial.printf("VERSION fw=%s board=%s unit=%s idf=%s psram=%u\n", FW_VERSION, kBoardName, kUnitCode,
+                  esp_get_idf_version(), static_cast<unsigned>(ESP.getPsramSize()));
 }
 
 void sendHelp(){
@@ -227,6 +350,7 @@ void sendHelp(){
         "  bright <0-255>\n"
         "  sound on|off | volume <0-255> | buzzer <gpio>|off | beep\n"
         "  alert done|attention|off  run an alert now (a test) / stop it\n"
+        "  autorotate on|off     CoreS3: turn the dashboard with the device\n"
         "  setup                 open the Wi-Fi setup portal\n"
         "  wifi reset            forget the Wi-Fi network and reboot\n"
         "  reboot\n");
@@ -279,7 +403,11 @@ void handleCommand(const hm::Command& c){
             break;
         case hm::Cmd::Buzzer:
             if (c.value >= 0 && !sound::validBuzzerPin(c.value)){
+#if defined(HM_BOARD_CORES3)
+                Serial.println("ERROR buzzer: the CoreS3 plays the alerts on its own speaker");
+#else
                 Serial.println("ERROR buzzer: use a free pin: 1 2 (Grove), 5 6 7 8 38 39 (bottom), or off");
+#endif
                 break;
             }
             settings::setBuzzerPin(static_cast<int8_t>(c.value));
@@ -309,6 +437,19 @@ void handleCommand(const hm::Command& c){
                           sound::describe(), settings::get().muted ? " (muted)" : "");
             break;
         }
+        case hm::Cmd::AutoRotate:
+            settings::setAutoRotate(c.value != 0);
+#if defined(HM_BOARD_CORES3)
+            {
+                float gx, gy, gz;
+                if (c.value && motion::gravity(&gx, &gy, &gz)){
+                    g_orient.snap(gx, gy, gz, g_orientCfg);
+                }
+                applyRotation();
+            }
+#endif
+            Serial.printf("OK autorotate=%s\n", c.value ? "on" : "off");
+            break;
         case hm::Cmd::Setup:
             net::startPortal();
             Serial.printf("OK portal AP=%s password=%s\n", net::info().apName, net::info().apPass);
@@ -343,7 +484,41 @@ void pollConsole(){
 
 // ---------------------------------------------------------------- button
 
+// A click: the button's on the AtomS3R, a tap on the CoreS3's screen
+void onClick(const hm::View& v){
+    if (v.alert){
+        g_alerts.acknowledge();
+        sound::stop();
+        return;
+    }
+    // On an end screen the first press dismisses it, then the lamp cycles
+    if (g_job.ended() && (v.screen == hm::Screen::Done || v.screen == hm::Screen::Stopped
+                          || v.screen == hm::Screen::Error)){
+        g_job.dismiss();
+        g_lamp = Lamp::Bright;
+    } else if (g_idleSince != 0 && g_lamp == Lamp::Bright && g_brightness == kDimBrightness){
+        g_idleSince = 0;   // idle-dimmed: a press brightens it again
+    } else {
+        g_lamp = g_lamp == Lamp::Bright ? Lamp::Dim : (g_lamp == Lamp::Dim ? Lamp::Off : Lamp::Bright);
+    }
+}
+
 void pollButton(const hm::View& v){
+#if defined(HM_BOARD_CORES3)
+    // The touch screen is the button: tap, or hold 3 s for the portal
+    const auto t = M5.Touch.getDetail();
+    if (t.isPressed() || t.wasReleased()){
+        g_touched = true;           // the finger shakes the device: not a move
+        g_touchAt = millis();
+    }
+    if (t.wasHold()){
+        net::startPortal();
+        return;
+    }
+    if (t.wasClicked()){
+        onClick(v);
+    }
+#else
     if (M5.BtnA.pressedFor(kHoldSetupMs)){
         if (!g_holdLatched){
             g_holdLatched = true;
@@ -356,23 +531,70 @@ void pollButton(const hm::View& v){
         return;
     }
     if (M5.BtnA.wasClicked()){
-        if (v.alert){
-            g_alerts.acknowledge();
-            sound::stop();
-            return;
-        }
-        // On an end screen the first press dismisses it, then the lamp cycles
-        if (g_job.ended() && (v.screen == hm::Screen::Done || v.screen == hm::Screen::Stopped
-                              || v.screen == hm::Screen::Error)){
-            g_job.dismiss();
-            g_lamp = Lamp::Bright;
-        } else if (g_idleSince != 0 && g_lamp == Lamp::Bright && g_brightness == kDimBrightness){
-            g_idleSince = 0;   // idle-dimmed: a press brightens it again
-        } else {
-            g_lamp = g_lamp == Lamp::Bright ? Lamp::Dim : (g_lamp == Lamp::Dim ? Lamp::Off : Lamp::Bright);
-        }
+        onClick(v);
+    }
+#endif
+}
+
+#if defined(HM_BOARD_CORES3)
+// ---------------------------------------------------------------- motion (CoreS3)
+
+// A move lights a dimmed or dark screen again
+void wake(){
+    const bool idleDim = g_idleSince != 0 && g_lamp == Lamp::Bright && g_brightness == kDimBrightness;
+    if (g_lamp != Lamp::Bright || idleDim){
+        g_lamp = Lamp::Bright;
+        g_idleSince = 0;   // the idle dimming starts over
+        Serial.println("lamp: woken by a move");
     }
 }
+
+// The IMU task's results: turn the display, wake it, silence an alert
+void pollMotion(uint32_t nowMs){
+    float gx, gy, gz;
+    if (motion::gravity(&gx, &gy, &gz)){
+        g_ax = gx;
+        g_ay = gy;
+        g_az = gz;
+        if (settings::get().autoRotate && g_orient.update(gx, gy, gz, nowMs, g_orientCfg)){
+            applyRotation();
+            Serial.printf("orientation: quarter %d, rotation %u, %s\n", g_orient.quarter(),
+                          M5.Display.getRotation(), g_portrait ? "portrait" : "landscape");
+        }
+    }
+    // A knock on the case silences an alert
+    const uint32_t taps = motion::taps();
+    if (taps != g_taps){
+        g_taps = taps;
+        if (g_alerts.active(nowMs)){
+            g_alerts.acknowledge();
+            sound::stop();
+            Serial.println("alert: silenced by a knock");
+        }
+    }
+    // A move wakes the screen, unless it came from a finger on the screen:
+    // judged a moment later, against touches just before or after it
+    const uint32_t moves = motion::moves();
+    if (moves != g_moves){
+        g_moves = moves;
+        if (!g_movePending){
+            g_movePending = true;
+            g_moveAt = nowMs;
+        }
+    }
+    // nowMs is this frame's; g_moveAt and g_touchAt are from earlier frames
+    // (pollButton runs after this), so the differences do not wrap
+    if (g_movePending && nowMs - g_moveAt >= kMoveJudgeMs){
+        const int32_t dt = static_cast<int32_t>(g_touchAt - g_moveAt);
+        const bool finger = g_touched && dt > -static_cast<int32_t>(kTouchQuietMs)
+                            && dt < static_cast<int32_t>(kMoveJudgeMs);
+        if (!finger){
+            wake();
+        }
+        g_movePending = false;
+    }
+}
+#endif
 
 }  // namespace
 
@@ -388,18 +610,37 @@ void setup(){
     tzset();
     sound::begin();
 
-    g_fb   = static_cast<hm::Color*>(heap_caps_malloc(hm::kScreenSize * hm::kScreenSize * sizeof(hm::Color),
+    g_fb   = static_cast<hm::Color*>(heap_caps_malloc(kFbW * kFbH * sizeof(hm::Color),
                                                       MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
-    g_mask = static_cast<uint8_t*>(heap_caps_calloc(hm::kScreenSize * hm::kScreenSize, 1,
-                                                    MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
+    g_mask = static_cast<uint8_t*>(heap_caps_calloc(kFbW * kFbH, 1, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
     if (!g_fb || !g_mask){
         Serial.println("FATAL: no memory for the frame buffer");
         delay(2000);
         ESP.restart();
     }
-    g_canvas = new hm::Canvas(g_fb, g_mask, hm::kScreenSize, hm::kScreenSize);
+    g_canvas = new hm::Canvas(g_fb, g_mask, kFbW, kFbH);
 
+#if defined(HM_BOARD_CORES3)
+    M5.Touch.setHoldThresh(kHoldSetupMs);
+    g_canvasL = g_canvas;
+    g_canvasP = new hm::Canvas(g_fb, g_mask, hm::kDashH, kFbH);   // portrait: 240 wide
+    // The IMU task (orientation, moves, knocks); the main loop leaves the
+    // IMU to it. Wait for its first samples so the first frame is upright.
+    g_imu = false;
+    if (motion::begin()){
+        float gx, gy, gz;
+        for (int i = 0; i < 20 && !motion::gravity(&gx, &gy, &gz); i++){
+            delay(10);
+        }
+        delay(60);   // a few more samples into the low-pass
+        if (settings::get().autoRotate && motion::gravity(&gx, &gy, &gz)){
+            g_orient.snap(gx, gy, gz, g_orientCfg);
+        }
+    }
+    applyRotation();
+#else
     g_imu = M5.Imu.isEnabled();
+#endif
     if (g_imu){
         // Prime the tilt so the first frame is already upright
         M5.Imu.update();
@@ -451,6 +692,10 @@ void loop(){
 
     const uint32_t ms = millis();
     const uint32_t nowS = ms / 1000;
+#if defined(HM_BOARD_CORES3)
+    pollBattery(ms);
+    pollMotion(ms);
+#endif
     if (net::info().link == net::Link::Online){
         g_estimate = g_estimator.update(net::printer());
         g_job.update(net::printer(), g_estimate, nowS, epochNow());
@@ -474,7 +719,17 @@ void loop(){
         g_haveDrawn = false;   // redraw when it comes back on
         return;
     }
-    if (!g_haveDrawn || tiltMoved || v != g_drawn){
+    bool draw = !g_haveDrawn || tiltMoved || v != g_drawn;
+#if defined(HM_BOARD_CORES3)
+    // A new screen and an alert's flash at once; other changes (the
+    // printer's numbers move several times a second) at most every
+    // kDashMinMs
+    if (draw && g_haveDrawn && v.screen == g_drawn.screen && v.alert == g_drawn.alert && !v.alert
+        && ms - g_renderAt < kDashMinMs){
+        draw = false;
+    }
+#endif
+    if (draw){
         render(v);
         g_drawn = v;
         g_haveDrawn = true;

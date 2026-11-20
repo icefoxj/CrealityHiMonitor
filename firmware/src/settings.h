@@ -18,6 +18,7 @@ struct Settings {
     int8_t  buzzerPin   = -1;   // piezo buzzer GPIO, -1 = none
     uint8_t volume      = 160;  // 0..255
     bool    muted       = false;
+    bool    autoRotate  = true; // CoreS3: turn the dashboard with the device
 };
 
 namespace settings {
@@ -34,5 +35,6 @@ void setBrightness(uint8_t b);
 void setBuzzerPin(int8_t pin);
 void setVolume(uint8_t v);
 void setMuted(bool m);
+void setAutoRotate(bool on);
 
 }  // namespace settings

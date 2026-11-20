@@ -38,6 +38,7 @@ void begin(uint8_t defaultRotation){
     s_settings.buzzerPin  = p.getChar("buzzer", -1);
     s_settings.volume     = p.getUChar("volume", 160);
     s_settings.muted      = p.getBool("muted", false);
+    s_settings.autoRotate = p.getBool("arot", true);
     if (p.isKey("rot")){
         s_settings.calStored = true;
         s_settings.rotation  = p.getUChar("rot", s_defaultRotation) & 3;
@@ -127,6 +128,14 @@ void setMuted(bool m){
     Preferences p;
     p.begin("hm01", false);
     p.putBool("muted", m);
+    p.end();
+}
+
+void setAutoRotate(bool on){
+    s_settings.autoRotate = on;
+    Preferences p;
+    p.begin("hm01", false);
+    p.putBool("arot", on);
     p.end();
 }
 

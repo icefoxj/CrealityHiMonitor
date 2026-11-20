@@ -23,9 +23,29 @@ This is the interface Creality Print uses in LAN mode. The server is `libhv/1.3.
 | `layer`, `TotalLayer` | `14`, `148` | current layer; 0 while heating and levelling |
 | `nozzleTemp`, `targetNozzleTemp` | `"220.380000"`, `220` | °C |
 | `bedTemp0`, `targetBedTemp0` | `"60.630000"`, `60` | °C |
-| `err.errcode` | `0` | error code, 0 = none (2839 = filament run-out in Creality Print's table) |
+| `err.errcode` | `0` | error code, 0 = none (2839 = filament run-out in Creality Print's table). The Hi also reported `500` (with `key` 0, `value` "") through a whole normal print on 2026-11-19. Creality's K1-series error table lists 500 as an AI detection prompt (print-quality / "spaghetti" warning), a notice only, not a fault. Not confirmed on the Hi itself: its AI switches (`aiSw`, `aiDetection`) read 0 |
 | `printFileName` | `/mnt/UDISK/printer_data/gcodes/<name>.gcode` | the job's file |
 | `hostname`, `model` | `Creality Hi-5EBC`, `F018` | identification |
+
+### More fields, for the CoreS3 dashboard
+
+Captured from the Hi mid-print on 2026-11-19. Units checked against each other: `usedMaterialLength` rose 62 in 20 s while `realTimeFlow` read 5–6 mm³/s, which is about 2.5 mm/s of 1.75 mm filament, so it counts millimetres.
+
+| Field | Example | Meaning |
+|---|---|---|
+| `printStartTime` | `1795096136` | Unix time the job was started. Read as an integer: a float loses the seconds |
+| `realTimeSpeed` | `"500.000000"` | toolhead speed now, mm/s (changes with every move) |
+| `realTimeFlow` | `"4.180000"` | volumetric flow now, mm³/s |
+| `curFeedratePct`, `curFlowratePct` | `100`, `100` | speed and flow overrides, % |
+| `modelFanPct`, `auxiliaryFanPct`, `caseFanPct` | `100`, `0`, `0` | part, auxiliary and case fans, % |
+| `curPosition` | `"X:69.37 Y:69.79 Z:7.56"` | toolhead position, mm; several updates a second. HM-01 keeps Z |
+| `usedMaterialLength` | `33265` | filament used by this job, mm |
+| `boxTemp`, `targetBoxTemp`, `maxBoxTemp` | `0`, `0`, `0` | chamber, °C. `maxBoxTemp` 0 means no chamber sensor (the Hi) |
+| `maxNozzleTemp`, `maxBedTemp` | `300`, `100` | the printer's limits, °C: the scale of the temperature gauges |
+
+Creality Print names the file `<model>.<ext>_<material>_<estimate>.gcode`, e.g. `wo01_panel_8x8.step_PLA_4h40m54s.gcode`. HM-01 splits it into the job name, the material and the slicer's estimate (`splitJobFile()` in `job.cpp`).
+
+Seen but not read: `accelerationLimits`, `velocityLimits`, `pressureAdvance`, `smoothTime`, `lightSw`, `cfsConnect`, the AI-detection and video switches, `autoLevelResult`.
 
 ### `state` codes
 

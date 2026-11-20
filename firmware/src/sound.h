@@ -1,6 +1,10 @@
 #pragma once
 
-// Alert sounds. The AtomS3R has no speaker of its own; two add-ons work:
+// Alert sounds.
+//
+// The CoreS3 has a speaker (AW88298 amplifier), set up by M5Unified.
+//
+// The AtomS3R has no speaker of its own; two add-ons work:
 //
 // - Atomic Echo Base (speaker + ES8311 codec, stacks under the Atom):
 //   found at boot by probing the codec at I2C 0x18 on G38/G39, then driven
@@ -16,7 +20,7 @@
 
 namespace sound {
 
-enum class Output : uint8_t { None, EchoBase, Buzzer };
+enum class Output : uint8_t { None, EchoBase, Buzzer, Speaker };
 
 // Before M5.begin(): look for an Echo Base and enable it in the config
 void prepare(m5::M5Unified::config_t& cfg);
@@ -30,9 +34,9 @@ void stop();
 void loop();   // every frame: starts the melody's next note
 
 Output output();
-const char* describe();   // "echo-base", "buzzer:2", "none"
+const char* describe();   // "speaker", "echo-base", "buzzer:2", "none"
 
-// GPIOs the buzzer may use on an AtomS3R
+// GPIOs the buzzer may use on an AtomS3R (none on the CoreS3)
 bool validBuzzerPin(int pin);
 
 }  // namespace sound

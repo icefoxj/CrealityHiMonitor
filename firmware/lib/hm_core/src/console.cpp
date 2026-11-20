@@ -97,6 +97,15 @@ Command parseCommand(const char* line){
         c.kind = Cmd::Alert;
         return c;
     }
+    if (strcmp(w, "autorotate") == 0){
+        char a[16];
+        word(r, a, sizeof(a));
+        if (strcmp(a, "on") == 0) c.value = 1;
+        else if (strcmp(a, "off") == 0) c.value = 0;
+        else { usage(c, "autorotate on|off"); return c; }
+        c.kind = Cmd::AutoRotate;
+        return c;
+    }
     if (strcmp(w, "volume") == 0){
         char a[16];
         word(r, a, sizeof(a));

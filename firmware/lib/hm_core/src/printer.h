@@ -40,9 +40,25 @@ struct PrinterStatus {
     float   nozzle      = -1000.0f, nozzleTarget = -1000.0f;
     float   bed         = -1000.0f, bedTarget    = -1000.0f;
     int     errorCode   = 0;       // "err.errcode"
-    char    file[64]    = "";      // file name without the directory
+    char    file[96]    = "";      // file name without the directory
     char    hostname[32] = "";
     char    model[12]   = "";
+
+    // Live details, shown on the larger panels (CoreS3)
+    int64_t startEpoch  = 0;       // "printStartTime", Unix time; 0 unknown
+    float   speed       = -1.0f;   // "realTimeSpeed", mm/s
+    float   flow        = -1.0f;   // "realTimeFlow", mm3/s
+    int     feedPct     = -1;      // "curFeedratePct", speed override %
+    int     flowPct     = -1;      // "curFlowratePct", flow override %
+    int     fanPart     = -1;      // "modelFanPct", %
+    int     fanAux      = -1;      // "auxiliaryFanPct", %
+    int     fanCase     = -1;      // "caseFanPct", %
+    float   z           = -1000.0f;   // Z of "curPosition", mm
+    int32_t usedMm      = -1;      // "usedMaterialLength", mm of filament
+    float   box         = -1000.0f, boxTarget = -1000.0f;   // chamber, when boxMax > 0
+    int     boxMax      = 0;       // "maxBoxTemp": 0 = no chamber sensor
+    int     nozzleMax   = -1;      // "maxNozzleTemp"
+    int     bedMax      = -1;      // "maxBedTemp"
 };
 
 // Applies one websocket text message. Returns true when it was a JSON

@@ -17,6 +17,17 @@ namespace hm {
 // not set. The firmware passes localtime_r() with the configured TZ.
 typedef bool (*LocalTimeFn)(int64_t epoch, int* hour, int* minute);
 
+// Creality Print names a job "<model>.<ext>_<material>_<time>.gcode", e.g.
+// "NovoCubo2_base.stl_PLA_2h31m7s.gcode". This gives the job name for the
+// mech font ("NOVOCUBO2 BASE": upper case, '_' as a space, accents
+// dropped), the material ("PLA") and the slicer's estimate (9067 s). Any
+// other name gives the whole name, no material and -1.
+void splitJobFile(const char* file, char* name, int nameLen, char* material, int materialLen,
+                  int32_t* sliceS);
+
+// "4h40m54s", "45m12s", "1d2h3m4s" -> seconds; -1 when s is not one
+int32_t parseSliceTime(const char* s, int len);
+
 class JobView {
 public:
     static constexpr uint32_t kEndHoldS = 30 * 60;
@@ -42,6 +53,10 @@ private:
     int      lastPercent_ = -1;
     int32_t  lastElapsed_ = -1;
     int      lastLayers_  = -1;
+    // For the end screens' details: the printer may clear them once idle
+    char     lastFile_[96] = "";
+    int32_t  lastUsedMm_  = -1;
+    int64_t  lastStart_   = 0;
 };
 
 }  // namespace hm

@@ -12,8 +12,13 @@ rotation frames), then build:
     docs/img/screens.png         all screens on one sheet
     docs/img/rotation.gif        the HUD following a quarter turn
     docs/img/hero.png            two AtomS3R mock-ups, one upright, one tilted
+    docs/img/cores3-<name>.png   every CoreS3 dashboard screen, 2x
+    docs/img/cores3-screens.png  all CoreS3 screens on one sheet
+    docs/img/cores3.png          a CoreS3 mock-up showing a print
+    docs/img/cores3-portrait-<name>.png    the portrait layout (stood on a side), 2x
+    docs/img/cores3-portrait-screens.png   all portrait screens on one sheet
 
-The pixels are exactly what the AtomS3R shows: same code, same RGB565
+The pixels are exactly what the devices show: same code, same RGB565
 quantisation.
 """
 
@@ -37,7 +42,7 @@ def build_and_run(tmp):
     exe = os.path.join(tmp, "preview.exe" if os.name == "nt" else "preview")
     cxx = os.environ.get("CXX", "g++")
     cmd = [cxx, "-std=gnu++14", "-O2", "-I" + CORE, os.path.join(ROOT, "tools", "preview.cpp")]
-    cmd += [os.path.join(CORE, f) for f in ("gfx.cpp", "mechfont.cpp", "screens.cpp")]
+    cmd += [os.path.join(CORE, f) for f in ("gfx.cpp", "mechfont.cpp", "screens.cpp", "dash.cpp")]
     cmd += ["-o", exe]
     subprocess.run(cmd, check=True)
     subprocess.run([exe, tmp], check=True)
@@ -109,6 +114,45 @@ def hero(tmp):
     return Image.alpha_composite(bg, out).convert("RGB")
 
 
+def cores3(screen, scale=2):
+    """An M5Stack CoreS3 seen from the front: 54 x 54 mm body, 2.0" panel."""
+    px_per_mm = 320 * scale / 40.8          # the panel's active area is 40.8 x 30.6 mm
+    body = int(54.0 * px_per_mm)
+    pad = int(body * 0.10)
+    size = body + 2 * pad
+    r = int(body * 0.07)
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    sh = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle([pad + 8, pad + 18, pad + body + 8, pad + body + 18], r,
+                                         fill=(0, 0, 0, 120))
+    img = Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(18)))
+    d = ImageDraw.Draw(img)
+    # Body: dark grey shell, a lighter rim, and the front bezel
+    d.rounded_rectangle([pad, pad, pad + body, pad + body], r, fill=(58, 60, 66, 255))
+    inset = int(body * 0.02)
+    d.rounded_rectangle([pad + inset, pad + inset, pad + body - inset, pad + body - inset], r - inset,
+                        fill=(30, 31, 35, 255))
+    # Black glass over the panel, which sits a little above centre
+    s = big(screen, scale).convert("RGBA")
+    gx = int(3.0 * px_per_mm)
+    s0x = pad + (body - s.width) // 2
+    s0y = pad + int(body * 0.40) - s.height // 2
+    d.rounded_rectangle([s0x - gx, s0y - gx, s0x + s.width + gx, s0y + s.height + gx], int(gx * 0.8),
+                        fill=(6, 6, 8, 255))
+    img.paste(s, (s0x, s0y), s)
+    # The three touch marks under the panel
+    my = s0y + s.height + int(5.5 * px_per_mm)
+    for k in (-1, 0, 1):
+        cx = pad + body // 2 + k * int(14 * px_per_mm)
+        d.ellipse([cx - 5, my - 5, cx + 5, my + 5], outline=(90, 94, 102, 255), width=2)
+    sheen = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(sheen).polygon([(s0x - gx, s0y - gx), (s0x + s.width * 0.5, s0y - gx),
+                                   (s0x - gx, s0y + s.height * 0.6)], fill=(255, 255, 255, 12))
+    img = Image.alpha_composite(img, sheen)
+    bg = Image.new("RGBA", img.size, (238, 238, 234, 255))
+    return Image.alpha_composite(bg, img).convert("RGB")
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix="hm01-")
@@ -128,6 +172,22 @@ def main():
         frames[0].save(os.path.join(OUT, "rotation.gif"), save_all=True, append_images=frames[1:],
                        duration=durations, loop=0, optimize=True)
         hero(tmp).save(os.path.join(OUT, "hero.png"), optimize=True)
+
+        # The CoreS3 dashboard
+        dash = []
+        for name in SCREENS:
+            im = load(tmp, f"cores3_{name}")
+            big(im, 2).save(os.path.join(OUT, f"cores3-{name}.png"), optimize=True)
+            dash.append(im)
+        sheet(dash, 3).save(os.path.join(OUT, "cores3-screens.png"), optimize=True)
+        cores3(load(tmp, "cores3_printing")).save(os.path.join(OUT, "cores3.png"), optimize=True)
+        port = []
+        for name in SCREENS:
+            im = load(tmp, f"cores3p_{name}")
+            if name in ("printing", "done", "idle"):
+                big(im, 2).save(os.path.join(OUT, f"cores3-portrait-{name}.png"), optimize=True)
+            port.append(im)
+        sheet(port, 6).save(os.path.join(OUT, "cores3-portrait-screens.png"), optimize=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     for f in sorted(os.listdir(OUT)):

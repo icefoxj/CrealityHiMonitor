@@ -4,7 +4,10 @@ Guidance for Claude Code when working in this repository.
 
 ## The project
 
-CrealityHiMonitor (unit code **HM-01**) is firmware for an **M5Stack AtomS3R** that shows the live status of a print on a **Creality Hi** on the same network: percent done, time left, finish time (ETA), layer, temperatures. The 128 × 128 display is a mech-style HUD that turns smoothly with the cube.
+CrealityHiMonitor (unit code **HM-01**) is firmware that shows the live status of a print on a **Creality Hi** on the same network: percent done, time left, finish time (ETA), layer, temperatures. Two builds of the same code:
+
+- **M5Stack AtomS3R** (`pio run -e atoms3r`): the 128 × 128 display is a mech-style HUD that turns smoothly with the cube.
+- **M5Stack CoreS3** (`pio run -e cores3`, build flag `HM_BOARD_CORES3`): a fixed 320 × 240 dashboard with every detail the printer sends (`dash.cpp`).
 
 Public repository: https://github.com/icefoxj/CrealityHiMonitor (branch `main`). The user asked for it to be public (2026-11-13).
 
@@ -31,10 +34,15 @@ From the original request (2026-11-13):
 7. **Standalone over Wi-Fi** (2026-11-13): HM-01 runs on any USB power supply with no PC attached.
    - It joins the Wi-Fi itself and reads the Hi's port 9999 directly. Nothing goes through a PC.
    - USB is only for power, flashing and the optional console. Never make the firmware wait for a USB host.
+8. **A CoreS3 version** (2026-11-19): the same mech look as the other projects, with **as much information about the current print as possible** on the screen.
+   - Percent and ETA stay the largest things on the printing dashboard.
+   - It plays the alerts on its own speaker; the touch screen is the button.
+   - A battery indicator in the title band (user, 2026-11-19).
+   - With its IMU (user asked for all four, 2026-11-19): turn over when upside down; a portrait layout when stood on a side; wake on a move; a knock on the case silences an alert.
 
 ## Current phase: v0.1.0, first steps on hardware
 
-- 29 host tests pass. The estimator test replays a real 2.5 h print from the user's Hi.
+- 36 host tests pass. The estimator test replays a real 2.5 h print from the user's Hi.
 - The screens are rendered on the PC with the same code.
 - **Flashed on the user's AtomS3R (2026-11-13).** That unit normally runs claude-monitor: ask before flashing it.
   - Seen working: boot, setup portal, console, IMU. The angle matched claude-monitor's in the same position.
@@ -48,6 +56,15 @@ From the original request (2026-11-13):
     - frame time while turning;
     - the colours.
 - **v0.1.0 released (2026-11-13).**
+- **CoreS3 build flashed on the user's CoreS3 (2026-11-19).** It was a test board; the user said it may be wiped.
+  - Seen working: boot into the setup portal, PSRAM (8 MB), the speaker output (`beep`, `alert done` from the console), 115–160 ms per full frame.
+  - **Live dashboard seen working (2026-11-19):** set up from a phone, it joined the Wi-Fi, found the Hi (at a new DHCP address) and showed the job; the user saw the data.
+  - The battery reads (54 %, charging, 3853 mV): this CoreS3 has its battery fitted. The user asked for the battery indicator.
+  - The user heard the alert chime on the CoreS3 speaker (2026-11-19).
+  - Not yet checked: touch; an alert from a real job end, confirmed on the console (the job ended before a watcher attached).
+  - **IMU features flashed (2026-11-19), not yet seen working:** turning (portrait, upside down), wake on a move, knock to silence.
+    - The normal pose was measured: gravity along +y, so `calibrate offset=90` gives quarter 0 / rotation 1. It is the compiled default and is also saved in that unit's NVS.
+    - The direction of the turn (sign −1) follows from M5GFX's `Panel_Device::convertRawXY`: each +1 of rotation turns the image 90° clockwise. With the measured axes (z out of the screen, gravity along +y when upright), a clockwise turn of the device gives quarter 3 → rotation 0, which turns the image back. It was derived from the source, not seen on the panel: if a portrait comes out upside down, `calibrate sign=1` and update the default.
 
 ## Commands
 
@@ -55,27 +72,31 @@ From the original request (2026-11-13):
 # Firmware (PlatformIO at ~/.platformio/penv/Scripts/pio.exe on the user's PC)
 cd firmware
 pio test -e native            # host tests of lib/hm_core (MinGW gcc 6.3 here: keep hm_core C++14)
-pio run -e atoms3r            # build (~1 min)
-pio run -e atoms3r -t upload  # flash over USB-C
+pio run -e atoms3r            # build (~1 min); -e cores3 for the CoreS3
+pio run -e atoms3r -t upload --upload-port COMx   # flash over USB-C: always name the port
 pio device monitor            # console, 115200; type "help"
 
 # Screens -> docs/img (g++ + Pillow; Pillow is in the FilamentRecycler venv)
 /e/GitHub/FilamentRecycler/.venv/Scripts/python tools/previews.py
 ```
 
-- After any change to `screens.*`, `gfx.*` or `mechfont.*`, run `tools/previews.py` and commit the regenerated `docs/img/` with the code.
-- Look at the result before committing: read `docs/img/screens.png` and `docs/img/hero.png`.
+- After any change to `screens.*`, `dash.*`, `gfx.*` or `mechfont.*`, run `tools/previews.py` and commit the regenerated `docs/img/` with the code.
+- Look at the result before committing: read `docs/img/screens.png`, `docs/img/hero.png`, `docs/img/cores3-screens.png`, `docs/img/cores3-portrait-screens.png` and `docs/img/cores3.png`. The Read tool may serve a cached image for a path it read before: copy the file to a new name to check it.
 
 ## Layout
 
 ```
-firmware/src/            hardware glue (Arduino): main.cpp (display, IMU, button, backlight, console, alerts),
-                         net.cpp (WiFiManager portal, printer search task, websocket), sound.cpp (Echo Base
-                         probe before M5.begin, GPIO buzzer, melodies), settings.cpp (NVS "hm01"), config.h
+firmware/src/            hardware glue (Arduino): main.cpp (display, IMU, button / touch, backlight, console,
+                         alerts), net.cpp (WiFiManager portal, printer search task, websocket), sound.cpp
+                         (CoreS3 speaker; AtomS3R: Echo Base probe before M5.begin, GPIO buzzer; melodies),
+                         motion.cpp (CoreS3: the IMU task, 200 Hz on core 0, the only reader of M5.Imu),
+                         settings.cpp (NVS "hm01"), config.h (board constants under HM_BOARD_CORES3)
 firmware/lib/hm_core/    plain C++ + ArduinoJson, no Arduino headers, unit-tested on the host:
-                         printer (parsing, state codes), eta (estimator), job (state -> screen, end latch),
-                         alert (when to flash / which melody),
-                         screens (bezel + HUD), gfx (AA vector raster), mechfont, tilt, console (parser)
+                         printer (parsing, state codes), eta (estimator), job (state -> screen, end latch,
+                         job details, file-name split), alert (when to flash / which melody),
+                         screens (bezel + HUD, View/Details), dash (CoreS3 dashboard, landscape + portrait),
+                         orient (quarter turns, knock / move detection), gfx (AA vector raster), mechfont,
+                         tilt, console (parser)
 firmware/test/test_core/ Unity tests (fixtures are real captured messages)
 tools/                   preview.cpp (renders every screen to PPM), previews.py (PNGs, GIF, hero mock-up)
 docs/                    creality-websocket.md (protocol notes), img/ (generated)
@@ -121,6 +142,16 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - About 0.4 ms per frame on the PC with SSE. Expected ~10–20 ms on the ESP32-S3, plus ~6.5 ms to push 32 KB.
   - Keep it there. Check with a host benchmark if you add heavy shapes.
   - Each row is clipped to the shape's span; fully covered spans are a memset.
+- **The CoreS3 dashboard (`dash.cpp`):**
+  - Within a frame nothing turns: screen pixels, identity transform. The display turns by quarters (`setRotation`) with the device. The HUD-circle rule above is for the AtomS3R.
+  - Two layouts, one `Geo` each (`kLand`, `kPort`); landscape and portrait previews are both in `docs/img`.
+  - Landscape: title band + clock (0–26), gauge left and panel right (30–164), four tiles (168–212), two text lines (225, 237).
+  - Portrait (240 × 320): gauge + ETA block (30–149), panel (152–226), tiles 2 × 2 (230–306), the job line (317). The printer's code moves from the header to the job line.
+  - Percent (cap 36 landscape, 30 portrait) and ETA (cap 28) are the largest text; keep them so.
+  - Smallest text: cap 6 (tile labels). The panel is ~0.13 mm per pixel. The font has no `,` or `?`: hints avoid them.
+  - It is drawn in strips of 80 rows from internal RAM (`drawDash(cv, v, top, portrait)`): three in landscape, four in portrait, 115–180 ms per frame on the device (4 ms on the PC). Strips match the full frame within one colour level (a test checks both layouts).
+  - Content changes are drawn at most every `kDashMinMs` (300 ms); a new screen and an alert's flash at once.
+  - `Details` values are rounded to what is shown, so a redraw happens only when a shown digit changes. The AtomS3R clears `View::d`.
 
 ## Keep in sync
 
@@ -128,9 +159,10 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
 - **Console commands:** `console.h` (comment + parser), `sendHelp()` in `main.cpp`, the README table, tests.
 - **Protocol knowledge:** `printer.cpp` ↔ `docs/creality-websocket.md` ↔ the README table of ports ↔ test fixtures.
 - **Orientation defaults:**
-  - `config.h` (`kBootRotationOffset`, `kTiltSign`, `kTiltOffsetDeg`) and the README "Orientation" section.
-  - They match claude-monitor's AtomS3R build. Change them only after measuring on hardware.
-- **Screens:** `screens.cpp` ↔ `docs/img/*` (regenerate) ↔ the README tables.
+  - `config.h` (`kBootRotationOffset`, `kTiltSign`, `kTiltOffsetDeg`, per board) and the README "Orientation" section.
+  - AtomS3R: they match claude-monitor's AtomS3R build. CoreS3: offset 90 measured on the user's unit. Change them only after measuring on hardware.
+- **Screens:** `screens.cpp` and `dash.cpp` ↔ `docs/img/*` (regenerate) ↔ the README tables (incl. the CoreS3 dashboard table).
+- **Boards:** `platformio.ini` envs ↔ `firmware.yml` (build + merge loop) ↔ the `release.yml` downloads table ↔ the README Install section.
 - Record user-visible changes in `CHANGELOG.md` under `[Unreleased]`.
 
 ## Releases
@@ -160,4 +192,17 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
 - **Opening the USB serial port can reset the board.** pyserial toggles DTR/RTS, which resets an ESP32-S3 on its USB Serial/JTAG port. Open it with `dtr = rts = False` set before `open()`; `pio device monitor` is fine.
 - **Sound:** the Echo Base must be configured before `M5.begin()` (`sound::prepare`). The Atomic SPK base is not supported: with it, M5Unified switches the IMU off.
 - **Reading back the whole 8 MB flash corrupts over USB.** Read it in 64 KB chunks with retries.
+- **Serial ports on the user's PC:** the claude-monitor daemon holds the Tab5's port (COM7) all the time. Always pass `--upload-port`; the CoreS3 was COM4, the AtomS3R COM3.
+- **Writing to a board whose firmware does not read its USB serial blocks pyserial forever.** Set `write_timeout` or listen first.
+- **CoreS3:**
+  - Do not probe the Echo Base pins (G38/G39) there; `sound::prepare` skips it under `HM_BOARD_CORES3`.
+  - The touch hold uses `M5.Touch.setHoldThresh(kHoldSetupMs)` and `wasHold()`; there is no BtnA.
+  - Download mode: hold the side reset button ~3 s until the green LED.
+- **The Hi sends `err.errcode` 500 during normal prints** (seen 2026-11-19); Creality's table calls 500 an AI detection prompt. The user asked why the screen showed "error 500". The CoreS3 shows codes in grey (`CODE 500`) while printing and in red (`ERR`) only on ERROR / PAUSED. The AtomS3R still shows ERR 500 instead of LEFT: ask before changing it.
+- **`printStartTime` must be read as an integer** (`readEpoch`): through a float it loses ~2 minutes.
+- **Never mark "now" as `now | 1` to keep 0 for "unset".** When `now` is even, the stamp is 1 ms in the future, and `now - stamp` wraps to ~49 days. A unit test caught it in the move detector (2026-11-19). Use a separate bool.
+- **CoreS3 IMU:**
+  - Only the IMU task reads `M5.Imu`. The internal I2C bus (touch, power chip, IMU) is locked per transaction in M5GFX's i2c layer, so the task on core 0 and the main loop can share it.
+  - M5Unified does not remap the CoreS3's accel and gyro axes. Its z points out of the screen.
+  - A finger tapping the screen shakes the device: moves within `kTouchQuietMs` of a touch are ignored, judged `kMoveJudgeMs` after they happen.
 - **The Bash tool mangles quotes and `\n`** in heredocs and `sed`. Write patch scripts to a file and run them.
