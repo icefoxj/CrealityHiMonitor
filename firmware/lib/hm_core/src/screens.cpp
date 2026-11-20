@@ -414,12 +414,20 @@ void job(Canvas& cv, const View& v){
     if (v.screen == Screen::Printing || v.screen == Screen::Paused){
         // The finish time is what the user looks for: it gets the big line
         pair(cv, "ETA", c, v.eta[0] ? v.eta : "--:--", pal::text, 26.0f, kValue);
-        if (v.errorCode != 0){
+        // A code from the printer: ERR in red, in place of LEFT, where it
+        // stopped the job (a pause). While printing it is only a notice
+        // (the Hi reports 500, an AI detection prompt, through whole normal
+        // prints): CODE in grey under the band, and LEFT stays.
+        if (v.errorCode != 0 && v.screen == Screen::Paused){
             snprintf(b, sizeof(b), "%d", v.errorCode);
             pair(cv, "ERR", pal::red, b, pal::text, 39.0f, kValueSm);
         } else {
             if (v.remainingS >= 0) formatDuration(v.remainingS, a, sizeof(a)); else snprintf(a, sizeof(a), "-:--");
             pair(cv, "LEFT", c, a, pal::text, 39.0f, kValueSm);
+            if (v.errorCode != 0){
+                snprintf(b, sizeof(b), "CODE %d", v.errorCode);
+                textLine(cv, b, -27.5f, kTiny, pal::mid);
+            }
         }
     } else {
         if (v.elapsedS >= 0) formatDuration(v.elapsedS, a, sizeof(a)); else snprintf(a, sizeof(a), "-:--");

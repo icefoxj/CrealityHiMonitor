@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-20
+
+A second board, run on hardware next to the Creality Hi: the **M5Stack CoreS3**, with a full-detail dashboard that turns with the device.
+
+- On a CoreS3 it was set up from a phone, found the Hi and showed the live job. These all worked on the device: the dashboard in landscape and portrait, the turn upside down, the battery, the alert chime on its speaker, waking on a move and silencing with a knock.
+- 36 unit tests on the host; the CI builds both boards.
+
 ### Added
 
 - **M5Stack CoreS3 build** (`pio run -e cores3`, release image `CrealityHiMonitor-cores3-merged.bin`): a 320 × 240 dashboard in the house mech livery, with everything the printer reports about the job:
@@ -25,6 +32,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **AtomS3R: a printer code no longer hides the time left.** While printing, a code shows as a grey `CODE 500` notice under the title band, and LEFT stays. `ERR` in red takes LEFT's place only when the printer paused on the code (filament run-out); the ERROR screen still shows its code. The Hi reports 500, an AI detection prompt, through whole normal prints.
 - **House colour: yellow instead of orange.** The bezel, the title bands and the printing, splash and ready screens are yellow (#FFCC00) on graphite, with dark text on the yellow bands. The paused screen is now cyan (it was amber, too close to the new yellow): yellow printing, cyan paused, green done, red stopped or failed, cyan network screens.
 
 ## [0.1.0] - 2026-11-13
@@ -77,5 +85,6 @@ Known limitations:
 - `tools/previews.py`: renders every screen with the firmware's drawing code into `docs/img`.
 - CI: unit tests and firmware build on every push; release with the binaries on a version tag.
 
-[Unreleased]: https://github.com/icefoxj/CrealityHiMonitor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/icefoxj/CrealityHiMonitor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/icefoxj/CrealityHiMonitor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/icefoxj/CrealityHiMonitor/releases/tag/v0.1.0

@@ -119,19 +119,19 @@ int dashShots(Canvas& cv, const char* dir, bool& ok, const char* prefix, bool po
     };
     Shot shots[12];
     int n = 0;
-    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.1.0"); shots[n++] = {"splash", v}; }
+    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.2.0"); shots[n++] = {"splash", v}; }
     { View v; v.screen = Screen::Setup; strcpy(v.line1, "HM-01-5EBC"); strcpy(v.line2, "HM015EBC");
-      strcpy(v.line3, "192.168.4.1"); v.spin = 12; strcpy(v.version, "V0.1.0"); shots[n++] = {"setup", v}; }
+      strcpy(v.line3, "192.168.4.1"); v.spin = 12; strcpy(v.version, "V0.2.0"); shots[n++] = {"setup", v}; }
     { View v; v.screen = Screen::Linking; strcpy(v.line1, "PRINTER"); strcpy(v.line2, "192.168.1.50");
       strcpy(v.line3, "PORT 9999"); v.spin = 25; strcpy(v.clock, "18:41"); v.d.wifiBars = 3;
-      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.1.0"); shots[n++] = {"linking", v}; }
+      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.2.0"); shots[n++] = {"linking", v}; }
     { View v; v.screen = Screen::Offline; strcpy(v.line1, "PRINTER"); strcpy(v.line2, "192.168.1.50");
       strcpy(v.line3, "RETRYING"); v.blink = 1; strcpy(v.clock, "18:41"); v.d.wifiBars = 3;
-      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.1.0"); shots[n++] = {"offline", v}; }
+      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.2.0"); shots[n++] = {"offline", v}; }
     { View v = dashPrinting(); v.screen = Screen::Idle; v.percent = -1; v.remainingS = -1; v.elapsedS = -1;
       v.layer = -1; strcpy(v.clock, "16:42"); v.nozzle = 26; v.bed = 24; v.d.nozzleTarget = 0; v.d.bedTarget = 0;
       v.d.battery = 96; v.d.charging = true;
-      v.blink = 0; strcpy(v.version, "V0.1.0"); shots[n++] = {"idle", v}; }
+      v.blink = 0; strcpy(v.version, "V0.2.0"); shots[n++] = {"idle", v}; }
     shots[n++] = {"printing", dashPrinting()};
     { View v = dashPrinting(); v.heating = true; v.percent = 0; v.remainingS = 16854; v.elapsedS = 0;
       strcpy(v.eta, "18:29"); strcpy(v.clock, "13:48"); v.layer = 0; v.nozzle = 168; v.bed = 58;
@@ -173,7 +173,7 @@ int main(int argc, char** argv){
     Shot shots[12];
     int n = 0;
 
-    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.1.0"); shots[n++] = {"splash", v}; }
+    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.2.0"); shots[n++] = {"splash", v}; }
     { View v; v.screen = Screen::Setup; strcpy(v.line1, "HM-01-5EBC"); strcpy(v.line2, "HM015EBC");
       strcpy(v.line3, "192.168.4.1"); v.spin = 12; shots[n++] = {"setup", v}; }
     { View v; v.screen = Screen::Linking; strcpy(v.line1, "PRINTER"); strcpy(v.line2, "192.168.1.216");

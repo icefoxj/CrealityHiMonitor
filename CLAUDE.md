@@ -40,7 +40,7 @@ From the original request (2026-11-13):
    - A battery indicator in the title band (user, 2026-11-19).
    - With its IMU (user asked for all four, 2026-11-19): turn over when upside down; a portrait layout when stood on a side; wake on a move; a knock on the case silences an alert.
 
-## Current phase: v0.1.0, first steps on hardware
+## Current phase: v0.2.0, two boards on hardware
 
 - 36 host tests pass. The estimator test replays a real 2.5 h print from the user's Hi.
 - The screens are rendered on the PC with the same code.
@@ -61,10 +61,11 @@ From the original request (2026-11-13):
   - **Live dashboard seen working (2026-11-19):** set up from a phone, it joined the Wi-Fi, found the Hi (at a new DHCP address) and showed the job; the user saw the data.
   - The battery reads (54 %, charging, 3853 mV): this CoreS3 has its battery fitted. The user asked for the battery indicator.
   - The user heard the alert chime on the CoreS3 speaker (2026-11-19).
-  - Not yet checked: touch; an alert from a real job end, confirmed on the console (the job ended before a watcher attached).
-  - **IMU features flashed (2026-11-19), not yet seen working:** turning (portrait, upside down), wake on a move, knock to silence.
+  - Not yet checked: an alert from a real job end, confirmed on the console (the job ended before a watcher attached).
+  - **IMU features seen working (user, 2026-11-20): "perfect"** for turning (portrait, upside down), wake on a move, knock to silence.
     - The normal pose was measured: gravity along +y, so `calibrate offset=90` gives quarter 0 / rotation 1. It is the compiled default and is also saved in that unit's NVS.
-    - The direction of the turn (sign −1) follows from M5GFX's `Panel_Device::convertRawXY`: each +1 of rotation turns the image 90° clockwise. With the measured axes (z out of the screen, gravity along +y when upright), a clockwise turn of the device gives quarter 3 → rotation 0, which turns the image back. It was derived from the source, not seen on the panel: if a portrait comes out upside down, `calibrate sign=1` and update the default.
+    - The direction of the turn (sign −1) follows from M5GFX's `Panel_Device::convertRawXY`: each +1 of rotation turns the image 90° clockwise. With the measured axes (z out of the screen, gravity along +y when upright), a clockwise turn of the device gives quarter 3 → rotation 0, which turns the image back. Confirmed on the panel.
+- **v0.2.0 released (2026-11-20):** the CoreS3 build, and the AtomS3R's printer code as a grey notice (LEFT stays).
 
 ## Commands
 
@@ -174,7 +175,7 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - version bumped everywhere above.
 - Pushing the tag runs `release.yml`:
   - It reruns the firmware workflow.
-  - It publishes the release with `CrealityHiMonitor-atoms3r-merged.bin` (flash at 0x0) and `-app.bin` (0x10000).
+  - It publishes the release with `CrealityHiMonitor-<board>-merged.bin` (flash at 0x0) and `-app.bin` (0x10000), for `atoms3r` and `cores3`. The job fails if no `.bin` is found.
   - The notes are the tag's CHANGELOG section; the job fails if that section is missing.
 - Commit and push only when the user asks; push straight to `main`.
 
@@ -198,7 +199,7 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - Do not probe the Echo Base pins (G38/G39) there; `sound::prepare` skips it under `HM_BOARD_CORES3`.
   - The touch hold uses `M5.Touch.setHoldThresh(kHoldSetupMs)` and `wasHold()`; there is no BtnA.
   - Download mode: hold the side reset button ~3 s until the green LED.
-- **The Hi sends `err.errcode` 500 during normal prints** (seen 2026-11-19); Creality's table calls 500 an AI detection prompt. The user asked why the screen showed "error 500". The CoreS3 shows codes in grey (`CODE 500`) while printing and in red (`ERR`) only on ERROR / PAUSED. The AtomS3R still shows ERR 500 instead of LEFT: ask before changing it.
+- **The Hi sends `err.errcode` 500 during normal prints** (seen 2026-11-19); Creality's table calls 500 an AI detection prompt. The user asked why the screen showed "error 500". Both boards show codes in grey (`CODE 500`) while printing and in red (`ERR`) only on ERROR / PAUSED (user, 2026-11-20). On the AtomS3R the notice sits under the title band and LEFT stays.
 - **`printStartTime` must be read as an integer** (`readEpoch`): through a float it loses ~2 minutes.
 - **Never mark "now" as `now | 1` to keep 0 for "unset".** When `now` is even, the stamp is 1 ms in the future, and `now - stamp` wraps to ~49 days. A unit test caught it in the move detector (2026-11-19). Use a separate bool.
 - **CoreS3 IMU:**

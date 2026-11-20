@@ -9,15 +9,14 @@ When the job ends it **alerts**: the screen flashes, and it plays a chime if a s
 
 ![HM-01 on an AtomS3R, upright and tilted](docs/img/hero.png)
 
-> **Status: v0.1.0, first release.**
+> **Status: v0.2.0: the CoreS3 build joins the AtomS3R.**
 > - The firmware's logic passes 36 unit tests on the host.
 > - The parser and the ETA are checked against a real 2.5 h print on a Creality Hi, replayed in the tests.
 > - On an AtomS3R it boots, reads the IMU and answers the console. The tilt angle matched claude-monitor's in the same position.
 > - **The live link works on hardware:** setup from a phone, Wi-Fi join, printer search, and steady data from a Creality Hi mid-print.
 > - **The alert flash works on hardware**, run from the console (`alert done`).
 > - **Not yet seen on hardware:** an alert raised by a real job end, and the alert sounds on the AtomS3R.
-> - **CoreS3 build (new, not released yet):** on a CoreS3 it was set up from a phone, found the Hi and showed the live dashboard mid-print. It reads its battery, draws a frame in 115–180 ms, and plays the alert chime on its own speaker.
-> - **Not yet seen on the CoreS3:** turning to portrait and upside down, waking on a move, silencing with a knock. The logic is unit-tested, and the normal position was measured on the device.
+> - **CoreS3 build, on hardware:** set up from a phone, it found the Hi and showed the live dashboard mid-print. It reads its battery and draws a frame in 115–180 ms. These all worked on the device: the chime on its own speaker, portrait and upside down, waking on a move, and silencing with a knock.
 > - Every image here is rendered by the firmware's own drawing code.
 
 ## What it shows
@@ -305,7 +304,7 @@ CI (`.github/workflows/firmware.yml`) runs the tests and builds the firmware on 
 
 - The setup portal and the printer interfaces have no authentication: keep HM-01 and the printer on a trusted network.
 - The printer search covers the /24 around HM-01's own address. On other networks, set the address.
-- The Hi reports `err.errcode` 500 (an AI detection prompt in Creality's table) during some normal prints. The CoreS3 shows it in grey as `CODE 500`; the AtomS3R shows `ERR 500` in place of LEFT.
+- The Hi reports `err.errcode` 500 (an AI detection prompt in Creality's table) during some normal prints. Both boards show it as a grey `CODE 500` notice and keep the time left. `ERR` in red is kept for a job stopped on its code (a pause, an error).
 - Only the Creality Hi has been tested. Other Creality printers with the same websocket (K1, K1C, K1 Max, K2) should work.
 - The ETA is only as good as Creality's time estimate: it was within 2 % on the measured print. A printer that runs much slower than the estimate shows 99 % and the file-based tail at the end.
 
