@@ -97,6 +97,7 @@ struct View {
     bool    alert      = false;  // an alert is on: the ring and band flash
     uint8_t blink      = 0;      // animation phase, advanced by the caller
     uint8_t spin       = 0;      // spinner position 0..39
+    uint8_t page       = 0;      // CardputerZero: 0 main, 1 details
     Details d;                   // the larger panels only
 
     // Same content (ignores nothing: the caller bumps blink/spin only when

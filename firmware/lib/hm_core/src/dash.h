@@ -31,12 +31,28 @@ namespace hm {
 
 constexpr int kDashW = 320;   // landscape; portrait is kDashH wide and kDashW tall
 constexpr int kDashH = 240;
+constexpr int kWideH = 170;   // the CardputerZero's 320 x 170 panel
 
-// Draws the frame into a canvas as wide as the layout (kDashW in
-// landscape, kDashH in portrait). The canvas holds rows top .. top +
-// height - 1 of the frame: the whole frame, or a strip of it, so the
-// firmware can draw it in a few strips from internal RAM. Shapes outside
-// the strip cost almost nothing.
-void drawDash(Canvas& cv, const View& v, int top = 0, bool portrait = false);
+enum class DashLayout : uint8_t {
+    Landscape,   // CoreS3, 320 x 240
+    Portrait,    // CoreS3 stood on a side, 240 x 320
+    Wide,        // CardputerZero, 320 x 170: two pages (View::page), the
+                 // gauge and the ETA on both
+};
+
+// Width and height of a layout's frame
+int dashWidth(DashLayout l);
+int dashHeight(DashLayout l);
+
+// Draws the frame into a canvas as wide as the layout. The canvas holds
+// rows top .. top + height - 1 of the frame: the whole frame, or a strip
+// of it, so the firmware can draw it in a few strips from internal RAM.
+// Shapes outside the strip cost almost nothing.
+void drawDash(Canvas& cv, const View& v, int top, DashLayout layout);
+
+// The CoreS3 calls: landscape, or portrait
+inline void drawDash(Canvas& cv, const View& v, int top = 0, bool portrait = false){
+    drawDash(cv, v, top, portrait ? DashLayout::Portrait : DashLayout::Landscape);
+}
 
 }  // namespace hm

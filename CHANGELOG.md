@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-23
+
+A third target, run on hardware next to the Creality Hi: the **M5Stack CardputerZero**, a Linux handheld. HM-01 is an app in its launcher menu.
+
+- Installed from its `.deb` on a CardputerZero (Debian 13), it showed up in the menu as **Hi Monitor**, found the Hi on the network by itself and showed the live job. These all worked on the device: both pages, the keys, the battery and the chime on its speaker.
+- The AtomS3R and CoreS3 firmware are unchanged in behaviour; they share the updated core.
+
+### Added
+
+- **M5Stack CardputerZero app** (`cardputerzero/`, package `hm01-hi-monitor_<ver>_arm64.deb`): HM-01 as an app in the CardputerZero's launcher menu ("Hi Monitor"), for its Debian on a Raspberry Pi CM0.
+  - The same core as the firmware (parser, ETA, alerts, the dashboard drawing), on a Linux layer: the framebuffer, the keyboard (evdev), a websocket client, the printer search on the /24, the battery and the Wi-Fi from `/sys` and `/proc`, the chime through `aplay` on the speaker (not ALSA's HDMI default).
+  - A 320 × 170 layout in two pages: the gauge with the percent and the ETA on both; the times and the machine on the first, the job's details on the second. `Tab` or the arrows switch, `Enter` silences an alert, `T` tests it, `Esc` returns to the menu.
+  - `--printer <ip>`, `--search`, `--demo`; for SSH, `--info` (screen, keyboard, battery, Wi-Fi) and `--probe <s>` (the link only, printed; it also runs on a PC).
+  - A launcher icon in the house style (`share/images/hm01_100.png`).
+  - Built statically with an aarch64 cross compiler (`cardputerzero/build.sh`), so it runs whatever the device's glibc; CI builds the `.deb` and the release attaches it.
+
 ## [0.2.0] - 2026-11-20
 
 A second board, run on hardware next to the Creality Hi: the **M5Stack CoreS3**, with a full-detail dashboard that turns with the device.
@@ -85,6 +101,7 @@ Known limitations:
 - `tools/previews.py`: renders every screen with the firmware's drawing code into `docs/img`.
 - CI: unit tests and firmware build on every push; release with the binaries on a version tag.
 
-[Unreleased]: https://github.com/icefoxj/CrealityHiMonitor/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/icefoxj/CrealityHiMonitor/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/icefoxj/CrealityHiMonitor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/icefoxj/CrealityHiMonitor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/icefoxj/CrealityHiMonitor/releases/tag/v0.1.0

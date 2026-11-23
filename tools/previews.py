@@ -17,6 +17,9 @@ rotation frames), then build:
     docs/img/cores3.png          a CoreS3 mock-up showing a print
     docs/img/cores3-portrait-<name>.png    the portrait layout (stood on a side), 2x
     docs/img/cores3-portrait-screens.png   all portrait screens on one sheet
+    docs/img/cardputerzero-<name>.png      the CardputerZero's 320 x 170 screens, 2x
+    docs/img/cardputerzero-screens.png     all of them on one sheet
+    cardputerzero/packaging/hm01_100.png   its launcher icon (transparent background)
 
 The pixels are exactly what the devices show: same code, same RGB565
 quantisation.
@@ -188,6 +191,21 @@ def main():
                 big(im, 2).save(os.path.join(OUT, f"cores3-portrait-{name}.png"), optimize=True)
             port.append(im)
         sheet(port, 6).save(os.path.join(OUT, "cores3-portrait-screens.png"), optimize=True)
+
+        # The CardputerZero (no setup screen there: the system owns the Wi-Fi)
+        cz = []
+        for name in ["printing", "details", "heating", "paused", "done", "stopped", "error", "idle",
+                     "linking", "offline", "splash"]:
+            im = load(tmp, f"cz_{name}")
+            if name in ("printing", "details", "done", "idle"):
+                big(im, 2).save(os.path.join(OUT, f"cardputerzero-{name}.png"), optimize=True)
+            cz.append(im)
+        sheet(cz, 3).save(os.path.join(OUT, "cardputerzero-screens.png"), optimize=True)
+        # Launcher icon: the drawing's background colour becomes transparent
+        icon = load(tmp, "cz_icon").convert("RGBA")
+        bg = icon.getpixel((0, 0))
+        icon.putdata([(r, g, b, 0) if (r, g, b, a) == bg else (r, g, b, a) for (r, g, b, a) in icon.getdata()])
+        icon.save(os.path.join(ROOT, "cardputerzero", "packaging", "hm01_100.png"), optimize=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     for f in sorted(os.listdir(OUT)):

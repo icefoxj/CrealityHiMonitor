@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Hi Monitor
+Exec=/usr/share/APPLaunch/bin/hm01
+Terminal=false
+Icon=share/images/hm01_100.png
+Type=Application

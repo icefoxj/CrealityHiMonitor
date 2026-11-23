@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "dash.h"
+#include "mechfont.h"
 #include "gfx.h"
 #include "screens.h"
 
@@ -110,28 +111,61 @@ View dashPrinting(){
     return v;
 }
 
+// The CardputerZero launcher icon, 100 x 100: the 40-segment ring, most of
+// it lit, around "HM". tools/previews.py makes the background transparent.
+void drawIcon(Canvas& cv){
+    cv.clear(pal::bezel);
+    cv.setXform(Xform::identity());
+    const Vec c = {50.0f, 50.0f};
+    const float pitch = 360.0f / kRingSegments, gap = 2.6f, deg = 3.14159265f / 180.0f;
+    for (int pass = 0; pass < 2; pass++){
+        cv.begin(pass == 0 ? pal::dim : pal::yellow);
+        for (int i = 0; i < kRingSegments; i++){
+            const bool lit = i < 29;
+            if (lit != (pass == 1)) continue;
+            cv.sector(c, 36.0f, 46.0f, (i * pitch + 0.5f * gap) * deg, ((i + 1) * pitch - 0.5f * gap) * deg);
+        }
+        cv.end();
+    }
+    cv.begin(pal::face);
+    cv.disc(c, 33.0f);
+    cv.end();
+    const TextStyle big = {24.0f, 4.6f, 3.0f};
+    cv.begin(pal::text);
+    drawText(cv, "HM", 50.0f, 59.0f, big, Align::Center);
+    cv.end();
+    // Speed dashes under the letters, the house rule's end
+    cv.begin(pal::yellow);
+    for (int i = 0; i < 3; i++){
+        const float x = 38.0f + 9.0f * i;
+        const Vec p[4] = {{x, 70.0f}, {x + 3.0f, 66.0f}, {x + 7.0f, 66.0f}, {x + 4.0f, 70.0f}};
+        cv.poly(p, 4);
+    }
+    cv.end();
+}
+
 // Every dashboard screen, into <prefix><name>.ppm; portrait: the canvas is
 // kDashH wide and kDashW tall
-int dashShots(Canvas& cv, const char* dir, bool& ok, const char* prefix, bool portrait){
+int dashShots(Canvas& cv, const char* dir, bool& ok, const char* prefix, DashLayout layout){
     struct Shot {
         const char* name;
         View v;
     };
     Shot shots[12];
     int n = 0;
-    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.2.0"); shots[n++] = {"splash", v}; }
+    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.3.0"); shots[n++] = {"splash", v}; }
     { View v; v.screen = Screen::Setup; strcpy(v.line1, "HM-01-5EBC"); strcpy(v.line2, "HM015EBC");
-      strcpy(v.line3, "192.168.4.1"); v.spin = 12; strcpy(v.version, "V0.2.0"); shots[n++] = {"setup", v}; }
+      strcpy(v.line3, "192.168.4.1"); v.spin = 12; strcpy(v.version, "V0.3.0"); shots[n++] = {"setup", v}; }
     { View v; v.screen = Screen::Linking; strcpy(v.line1, "PRINTER"); strcpy(v.line2, "192.168.1.50");
       strcpy(v.line3, "PORT 9999"); v.spin = 25; strcpy(v.clock, "18:41"); v.d.wifiBars = 3;
-      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.2.0"); shots[n++] = {"linking", v}; }
+      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.3.0"); shots[n++] = {"linking", v}; }
     { View v; v.screen = Screen::Offline; strcpy(v.line1, "PRINTER"); strcpy(v.line2, "192.168.1.50");
       strcpy(v.line3, "RETRYING"); v.blink = 1; strcpy(v.clock, "18:41"); v.d.wifiBars = 3;
-      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.2.0"); shots[n++] = {"offline", v}; }
+      strcpy(v.d.ip, "192.168.1.60"); strcpy(v.version, "V0.3.0"); shots[n++] = {"offline", v}; }
     { View v = dashPrinting(); v.screen = Screen::Idle; v.percent = -1; v.remainingS = -1; v.elapsedS = -1;
       v.layer = -1; strcpy(v.clock, "16:42"); v.nozzle = 26; v.bed = 24; v.d.nozzleTarget = 0; v.d.bedTarget = 0;
       v.d.battery = 96; v.d.charging = true;
-      v.blink = 0; strcpy(v.version, "V0.2.0"); shots[n++] = {"idle", v}; }
+      v.blink = 0; strcpy(v.version, "V0.3.0"); shots[n++] = {"idle", v}; }
     shots[n++] = {"printing", dashPrinting()};
     { View v = dashPrinting(); v.heating = true; v.percent = 0; v.remainingS = 16854; v.elapsedS = 0;
       strcpy(v.eta, "18:29"); strcpy(v.clock, "13:48"); v.layer = 0; v.nozzle = 168; v.bed = 58;
@@ -151,9 +185,18 @@ int dashShots(Canvas& cv, const char* dir, bool& ok, const char* prefix, bool po
       shots[n++] = {"error", v}; }
 
     for (int i = 0; i < n; i++){
-        drawDash(cv, shots[i].v, 0, portrait);
+        drawDash(cv, shots[i].v, 0, layout);
         char name[40];
         snprintf(name, sizeof(name), "%s%s", prefix, shots[i].name);
+        ok &= writePpm(dir, name, cv);
+    }
+    // The wide layout's second page (the job's details)
+    if (layout == DashLayout::Wide){
+        View v = dashPrinting();
+        v.page = 1;
+        drawDash(cv, v, 0, layout);
+        char name[40];
+        snprintf(name, sizeof(name), "%sdetails", prefix);
         ok &= writePpm(dir, name, cv);
     }
     return n;
@@ -173,7 +216,7 @@ int main(int argc, char** argv){
     Shot shots[12];
     int n = 0;
 
-    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.2.0"); shots[n++] = {"splash", v}; }
+    { View v; v.screen = Screen::Splash; strcpy(v.version, "V0.3.0"); shots[n++] = {"splash", v}; }
     { View v; v.screen = Screen::Setup; strcpy(v.line1, "HM-01-5EBC"); strcpy(v.line2, "HM015EBC");
       strcpy(v.line3, "192.168.4.1"); v.spin = 12; shots[n++] = {"setup", v}; }
     { View v; v.screen = Screen::Linking; strcpy(v.line1, "PRINTER"); strcpy(v.line2, "192.168.1.216");
@@ -209,9 +252,15 @@ int main(int argc, char** argv){
     }
     // The CoreS3 dashboard, landscape and portrait (same buffers)
     Canvas dv(g_dpx, g_dmask, kDashW, kDashH);
-    const int nd = dashShots(dv, dir, ok, "cores3_", false);
+    const int nd = dashShots(dv, dir, ok, "cores3_", DashLayout::Landscape);
     Canvas pv2(g_dpx, g_dmask, kDashH, kDashW);
-    dashShots(pv2, dir, ok, "cores3p_", true);
+    dashShots(pv2, dir, ok, "cores3p_", DashLayout::Portrait);
+    // The CardputerZero, 320 x 170, and its launcher icon
+    Canvas wv(g_dpx, g_dmask, kDashW, kWideH);
+    dashShots(wv, dir, ok, "cz_", DashLayout::Wide);
+    Canvas iv(g_dpx, g_dmask, 100, 100);
+    drawIcon(iv);
+    ok &= writePpm(dir, "cz_icon", iv);
 
     printf("%d screens, 19 rotation frames, %d CoreS3 screens -> %s\n", n, nd, dir);
     return ok ? 0 : 1;

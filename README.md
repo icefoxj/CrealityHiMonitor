@@ -1,15 +1,16 @@
 # CrealityHiMonitor — HM-01
 
-A live print monitor for the **Creality Hi**, in two builds:
+A live print monitor for the **Creality Hi**, in three builds:
 
 - **M5Stack AtomS3R**: the 24 mm cube sits next to the printer and shows the job's **percent done**, the **time left** and the **finish time (ETA)**. The display is a mech-style HUD that **turns with the cube**: stand it on any side or tilt it, and the dial rotates smoothly to stay upright.
 - **M5Stack CoreS3**: a 320 × 240 [desk dashboard](#m5stack-cores3-dashboard) in the same livery, with **everything the printer reports** about the job: times, layer, Z, temperatures and targets, speed, flow, fans, filament used, the file, the material and the slicer's estimate.
+- **M5Stack CardputerZero**: an [app in its launcher menu](#m5stack-cardputerzero-app) (Linux on a Raspberry Pi CM0), the same dashboard on its 320 × 170 screen, in two pages.
 
 When the job ends it **alerts**: the screen flashes, and it plays a chime if a speaker is fitted (the CoreS3 has one).
 
 ![HM-01 on an AtomS3R, upright and tilted](docs/img/hero.png)
 
-> **Status: v0.2.0: the CoreS3 build joins the AtomS3R.**
+> **Status: v0.3.0: the CardputerZero app joins the AtomS3R and CoreS3 builds.**
 > - The firmware's logic passes 36 unit tests on the host.
 > - The parser and the ETA are checked against a real 2.5 h print on a Creality Hi, replayed in the tests.
 > - On an AtomS3R it boots, reads the IMU and answers the console. The tilt angle matched claude-monitor's in the same position.
@@ -17,6 +18,7 @@ When the job ends it **alerts**: the screen flashes, and it plays a chime if a s
 > - **The alert flash works on hardware**, run from the console (`alert done`).
 > - **Not yet seen on hardware:** an alert raised by a real job end, and the alert sounds on the AtomS3R.
 > - **CoreS3 build, on hardware:** set up from a phone, it found the Hi and showed the live dashboard mid-print. It reads its battery and draws a frame in 115–180 ms. These all worked on the device: the chime on its own speaker, portrait and upside down, waking on a move, and silencing with a knock.
+> - **CardputerZero app, on hardware:** installed with its `.deb`, it shows up in the launcher menu as **Hi Monitor**. It found the Hi on the network by itself and showed the live job. These all worked on the device: both pages, the keys, the battery and the chime on its speaker.
 > - Every image here is rendered by the firmware's own drawing code.
 
 ## What it shows
@@ -110,6 +112,42 @@ It turns only once the device has rested in the new position for about half a se
 - **Redraws:** the frame is drawn in strips from internal RAM, in 115–180 ms. The printer's numbers change several times a second, so the screen shows them at most every 300 ms; a new screen, a turn and an alert's flash are drawn at once.
 - **The IMU** is read by its own task, 200 times a second: a knock lasts only a few milliseconds.
 
+## M5Stack CardputerZero app
+
+The CardputerZero is a Linux handheld (Raspberry Pi CM0, Debian, a 320 × 170 screen and a keyboard). HM-01 runs on it as an app in its launcher (APPLaunch): pick **Hi Monitor** in the menu.
+
+| Main page | Details page |
+|---|---|
+| ![CardputerZero, main page](docs/img/cardputerzero-printing.png) | ![CardputerZero, details page](docs/img/cardputerzero-details.png) |
+
+- **Both pages** keep the gauge with the percent and the ETA, the largest things on screen, and the time left.
+- **Main page:** print time, total, start; layer, Z, file position; nozzle, bed, speed.
+- **Details page:** flow, the three fans, filament used, the speed and flow overrides, the slicer's estimate, the heaters' targets (or the chamber), the job's name and material.
+- **The title band** shows the state, the printer's code (grey `CODE`, red `ERR`), the CardputerZero's battery, the Wi-Fi signal and the clock.
+- **Keys:** `Tab`, the arrows or `,` `.` `;` `/` switch the page; `Enter` or `Space` silence an alert, then dismiss an end screen; `T` tests the alert; `Esc` returns to the menu.
+- **The printer** is found on the network by itself and remembered; the CardputerZero's own Wi-Fi is set up by its system. `hm01 --printer <ip>` sets the address, `hm01 --search` forgets it, `hm01 --demo` shows sample data. Over SSH, `hm01 --info` reports the screen, keyboard, battery and Wi-Fi it found, and `hm01 --probe 10` runs the printer link alone and prints what it reads.
+- **Alerts** flash the screen and play the chime on its speaker (through `aplay`).
+
+All CardputerZero screens are on [one sheet](docs/img/cardputerzero-screens.png).
+
+**Install:** copy the `.deb` from the [latest release](https://github.com/icefoxj/CrealityHiMonitor/releases/latest) to the device and install it:
+
+```bash
+scp hm01-hi-monitor_<ver>_arm64.deb <user>@<cardputerzero>:/tmp/
+ssh <user>@<cardputerzero> sudo dpkg -i /tmp/hm01-hi-monitor_<ver>_arm64.deb
+```
+
+It puts the program in `/usr/share/APPLaunch/bin/hm01`, its menu entry in `/usr/share/APPLaunch/applications/hm01.desktop` and the icon in `share/images/`. The launcher picks the entry up on its own. `sudo dpkg -r hm01-hi-monitor` removes it.
+
+**Build** (any Linux with an aarch64 cross compiler, or WSL on Windows):
+
+```bash
+sudo apt install g++-aarch64-linux-gnu dpkg-dev curl
+cardputerzero/build.sh          # -> cardputerzero/build/hm01 and the .deb
+```
+
+The binary is static, so it does not depend on the device's glibc. The app uses the same `lib/hm_core` as the firmware (parser, ETA, alerts, the dashboard drawing) and draws straight into the framebuffer. The launcher hands the screen over while an app runs.
+
 ## Mech look
 
 Same house style as the printed parts of the other projects (Tab5 stand, OutageAlarm, FilamentDryer, CrealityHiDrawer):
@@ -127,7 +165,8 @@ Yellow livery on graphite, with a colour per state: yellow printing, cyan paused
 |---|---|
 | **M5Stack AtomS3R** (ESP32-S3, 0.85" 128 × 128 IPS, BMI270 IMU, button under the screen) | the cube with the turning HUD |
 | or **M5Stack CoreS3** (ESP32-S3, 2.0" 320 × 240 IPS touch screen, speaker) | the [desk dashboard](#m5stack-cores3-dashboard) |
-| USB-C cable and any 5 V USB supply | power |
+| or **M5Stack CardputerZero** (Raspberry Pi CM0, Debian, 1.9" 320 × 170 screen, keyboard, speaker, battery) | the [launcher app](#m5stack-cardputerzero-app); it uses the device's own Wi-Fi |
+| USB-C cable and any 5 V USB supply | power (the CardputerZero runs on its battery too) |
 | Optional, AtomS3R only: **M5Stack Atomic Echo Base** (speaker), or a **piezo buzzer** on the Grove port | sound for the [alerts](#alerts); the AtomS3R has no speaker |
 
 The printer and HM-01 must be on the same network. HM-01 reads one stock interface of the printer, the **Creality websocket on port 9999**: the one Creality Print uses. It gives the state, times, layers, temperatures and errors. No root, no printer settings to change. Protocol notes: [docs/creality-websocket.md](docs/creality-websocket.md).
@@ -144,6 +183,8 @@ esptool.py --chip esp32s3 write_flash 0x0 CrealityHiMonitor-atoms3r-merged.bin  
 ```
 
 If the port is not found, enter download mode and run the command again. On the AtomS3R, hold the reset button until the green LED lights. On the CoreS3, hold the reset button on its side for about 3 s, until the green LED lights.
+
+**CardputerZero:** the release's `hm01-hi-monitor_<ver>_arm64.deb` installs the app in its launcher; see [M5Stack CardputerZero app](#m5stack-cardputerzero-app).
 
 ### From source
 
@@ -287,18 +328,20 @@ firmware/
     alert.*            end-of-job / attention alerts, melodies
     job.*              printer state -> screen, end-of-job latch
     screens.*          the bezel and the HUD screens (AtomS3R)
-    dash.*             the 320 x 240 dashboard, landscape and portrait (CoreS3)
+    dash.*             the dashboard: 320 x 240 landscape and portrait (CoreS3), 320 x 170 (CardputerZero)
     orient.*           quarter-turn orientation, knock and move detection (CoreS3)
     gfx.*              anti-aliased vector drawing into an RGB565 buffer
     mechfont.*         the mech stroke font
     tilt.*             accelerometer -> smoothed HUD angle (from claude-monitor)
     console.*          serial command parser
   test/test_core/      Unity tests
+cardputerzero/         the CardputerZero app: src/ (framebuffer, keyboard, websocket, printer link, system),
+                       packaging/ (launcher entry, icon, deb control), build.sh
 tools/                 preview.cpp (host renderer), previews.py (docs images)
 docs/                  protocol notes, images
 ```
 
-CI (`.github/workflows/firmware.yml`) runs the tests and builds the firmware on every push. A `vX.Y.Z` tag publishes a release with the binaries (`release.yml`).
+CI (`.github/workflows/firmware.yml`) runs the tests, builds the firmware and the CardputerZero `.deb` on every push. A `vX.Y.Z` tag publishes a release with the binaries (`release.yml`).
 
 ## Known limitations
 

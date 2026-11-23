@@ -1005,6 +1005,29 @@ void test_dash_screens_and_strips(void){
         }
         TEST_ASSERT_TRUE_MESSAGE(worst <= 1, screenName(sc));
     }
+    // The CardputerZero's 320 x 170 layout, both pages: it draws, and the
+    // gauge's centre shows the job's percent (a lit ring segment at the top)
+    Canvas wide(s_dash, s_dmask, kDashW, kWideH);
+    TEST_ASSERT_EQUAL(kWideH, dashHeight(DashLayout::Wide));
+    for (Screen sc : all){
+        for (uint8_t page = 0; page < 2; page++){
+            View v = dashView(sc);
+            v.page = page;
+            drawDash(wide, v, 0, DashLayout::Wide);
+        }
+    }
+    {
+        View v = dashView(Screen::Printing);
+        drawDash(wide, v, 0, DashLayout::Wide);
+        TEST_ASSERT_EQUAL_HEX16(pal::yellow, s_dash[12 * kDashW + 4]);   // the band
+        View p2 = v;
+        p2.page = 1;
+        static Color first[kDashW * kWideH];
+        memcpy(first, s_dash, sizeof(first));
+        drawDash(wide, p2, 0, DashLayout::Wide);
+        TEST_ASSERT_TRUE(memcmp(first, s_dash, sizeof(first)) != 0);     // page 2 differs
+    }
+
     const struct { Screen s; Color c; } bands[] = {
         {Screen::Printing, pal::yellow}, {Screen::Paused, pal::cyan}, {Screen::Done, pal::green},
         {Screen::Error, pal::red}, {Screen::Setup, pal::cyan},

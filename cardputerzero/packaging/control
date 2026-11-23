@@ -1,0 +1,13 @@
+Package: hm01-hi-monitor
+Version: @VERSION@
+Architecture: arm64
+Maintainer: icefoxj <icefoxj@users.noreply.github.com>
+Section: utils
+Priority: optional
+Homepage: https://github.com/icefoxj/CrealityHiMonitor
+Description: HM-01 live print monitor for a Creality Hi
+ Shows the job running on a Creality Hi on the same network: percent done,
+ finish time, time left, layer, temperatures, speed, flow, fans, filament and
+ the file, on a mech-style dashboard. It reads the printer's own websocket
+ (port 9999), finds the printer on the network by itself and alerts when the
+ job ends. An app for the CardputerZero launcher; ESC returns to the menu.

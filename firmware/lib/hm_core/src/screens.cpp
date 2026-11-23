@@ -467,7 +467,7 @@ bool View::operator==(const View& o) const {
         && heating == o.heating && errorCode == o.errorCode
         && strcmp(line1, o.line1) == 0 && strcmp(line2, o.line2) == 0 && strcmp(line3, o.line3) == 0
         && strcmp(version, o.version) == 0 && alert == o.alert && blink == o.blink && spin == o.spin
-        && d == o.d;
+        && page == o.page && d == o.d;
 }
 
 bool Details::operator==(const Details& o) const {

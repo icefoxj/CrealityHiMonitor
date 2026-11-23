@@ -4,10 +4,11 @@ Guidance for Claude Code when working in this repository.
 
 ## The project
 
-CrealityHiMonitor (unit code **HM-01**) is firmware that shows the live status of a print on a **Creality Hi** on the same network: percent done, time left, finish time (ETA), layer, temperatures. Two builds of the same code:
+CrealityHiMonitor (unit code **HM-01**) shows the live status of a print on a **Creality Hi** on the same network: percent done, time left, finish time (ETA), layer, temperatures. Three builds of the same core (`firmware/lib/hm_core`):
 
 - **M5Stack AtomS3R** (`pio run -e atoms3r`): the 128 × 128 display is a mech-style HUD that turns smoothly with the cube.
-- **M5Stack CoreS3** (`pio run -e cores3`, build flag `HM_BOARD_CORES3`): a fixed 320 × 240 dashboard with every detail the printer sends (`dash.cpp`).
+- **M5Stack CoreS3** (`pio run -e cores3`, build flag `HM_BOARD_CORES3`): a 320 × 240 dashboard with every detail the printer sends (`dash.cpp`).
+- **M5Stack CardputerZero** (`cardputerzero/build.sh`): a Linux app (Debian arm64 on a Raspberry Pi CM0) in its launcher menu, the dashboard on its 320 × 170 screen in two pages (`DashLayout::Wide`).
 
 Public repository: https://github.com/icefoxj/CrealityHiMonitor (branch `main`). The user asked for it to be public (2026-11-13).
 
@@ -39,8 +40,11 @@ From the original request (2026-11-13):
    - It plays the alerts on its own speaker; the touch screen is the button.
    - A battery indicator in the title band (user, 2026-11-19).
    - With its IMU (user asked for all four, 2026-11-19): turn over when upside down; a portrait layout when stood on a side; wake on a move; a knock on the case silences an alert.
+9. **A CardputerZero version** (2026-11-23): "uma versão para rodar no Cardputer zero ... coloque ele como opção no menu do cardputer zero".
+   - It is an app in the launcher (APPLaunch) menu: a `.desktop` entry in `/usr/share/APPLaunch/applications`.
+   - ESC returns to the menu. The launcher hands the framebuffer to the app while it runs.
 
-## Current phase: v0.2.0, two boards on hardware
+## Current phase: v0.3.0, three targets on hardware
 
 - 36 host tests pass. The estimator test replays a real 2.5 h print from the user's Hi.
 - The screens are rendered on the PC with the same code.
@@ -66,6 +70,13 @@ From the original request (2026-11-13):
     - The normal pose was measured: gravity along +y, so `calibrate offset=90` gives quarter 0 / rotation 1. It is the compiled default and is also saved in that unit's NVS.
     - The direction of the turn (sign −1) follows from M5GFX's `Panel_Device::convertRawXY`: each +1 of rotation turns the image 90° clockwise. With the measured axes (z out of the screen, gravity along +y when upright), a clockwise turn of the device gives quarter 3 → rotation 0, which turns the image back. Confirmed on the panel.
 - **v0.2.0 released (2026-11-20):** the CoreS3 build, and the AtomS3R's printer code as a grey notice (LEFT stays).
+- **CardputerZero app installed on the user's CardputerZero (2026-11-23)** with `dpkg -i` over SSH.
+  - The device: Debian 13 trixie, aarch64. It reaches the network over Wi-Fi only; it does not show on the PC's USB. The launcher `/usr/share/APPLaunch/bin/M5CardputerZero-APPLaunch` runs as the user; sudo needs no password.
+  - Hardware seen there: `/dev/fb0` (panel-mipi-dbid) 320 × 170, 16 bpp RGB565 (red at bit 11), stride 640, no rotation; the keyboard is `tca8418c` (`/dev/input/cardputer-zero-internal`); the speaker is ALSA card `ES8389Audio`, while ALSA's default is the HDMI card; the battery is `bq27220-0`.
+  - Seen working on the device: `--info` (framebuffer, keyboard, battery, Wi-Fi), `--probe` (the printer search found the Hi; the link held steady).
+  - **The user checked it on the device (2026-11-23): "Tudo perfeito"**: the menu entry, both pages, the keys, the chime.
+- **v0.3.0 released (2026-11-23):** the CardputerZero app (`.deb` in the release).
+  - Another Raspberry Pi on the user's LAN answers SSH with the same login and is not the CardputerZero: check for `/usr/share/APPLaunch` and `/dev/fb0` (320 × 170) before installing.
 
 ## Commands
 
@@ -79,6 +90,10 @@ pio device monitor            # console, 115200; type "help"
 
 # Screens -> docs/img (g++ + Pillow; Pillow is in the FilamentRecycler venv)
 /e/GitHub/FilamentRecycler/.venv/Scripts/python tools/previews.py
+
+# CardputerZero app (in WSL Ubuntu-24.04 as root: g++-aarch64-linux-gnu is installed there)
+wsl -d Ubuntu-24.04 -u root -- bash -lc "cd /mnt/e/GitHub/CrealityHiMonitor && bash cardputerzero/build.sh"
+#   CXX=g++ ... build.sh            host build; then build/hm01 --printer <ip> --probe 10 tests the link
 ```
 
 - After any change to `screens.*`, `dash.*`, `gfx.*` or `mechfont.*`, run `tools/previews.py` and commit the regenerated `docs/img/` with the code.
@@ -99,6 +114,10 @@ firmware/lib/hm_core/    plain C++ + ArduinoJson, no Arduino headers, unit-teste
                          orient (quarter turns, knock / move detection), gfx (AA vector raster), mechfont,
                          tilt, console (parser)
 firmware/test/test_core/ Unity tests (fixtures are real captured messages)
+cardputerzero/           the CardputerZero app: src/main.cpp (loop, keys, view), link.* (printer search +
+                         websocket session in a thread), ws.* (minimal websocket client), platform.*
+                         (framebuffer, evdev keyboard, battery, Wi-Fi, aplay, config file),
+                         packaging/ (hm01.desktop, hm01_100.png icon from previews.py, deb control), build.sh
 tools/                   preview.cpp (renders every screen to PPM), previews.py (PNGs, GIF, hero mock-up)
 docs/                    creality-websocket.md (protocol notes), img/ (generated)
 ```
@@ -153,6 +172,7 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - It is drawn in strips of 80 rows from internal RAM (`drawDash(cv, v, top, portrait)`): three in landscape, four in portrait, 115–180 ms per frame on the device (4 ms on the PC). Strips match the full frame within one colour level (a test checks both layouts).
   - Content changes are drawn at most every `kDashMinMs` (300 ms); a new screen and an alert's flash at once.
   - `Details` values are rounded to what is shown, so a redraw happens only when a shown digit changes. The AtomS3R clears `View::d`.
+- **The CardputerZero layout (`DashLayout::Wide`, 320 × 170):** the gauge (as portrait's) at the left and one panel. ETA + LEFT on top of both pages; `View::page` 0 = times and machine, 1 = the job's details. No tile, hint or footer rows (`kWide` sets their y < 0). The end screens have one page.
 
 ## Keep in sync
 
@@ -163,7 +183,8 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - `config.h` (`kBootRotationOffset`, `kTiltSign`, `kTiltOffsetDeg`, per board) and the README "Orientation" section.
   - AtomS3R: they match claude-monitor's AtomS3R build. CoreS3: offset 90 measured on the user's unit. Change them only after measuring on hardware.
 - **Screens:** `screens.cpp` and `dash.cpp` ↔ `docs/img/*` (regenerate) ↔ the README tables (incl. the CoreS3 dashboard table).
-- **Boards:** `platformio.ini` envs ↔ `firmware.yml` (build + merge loop) ↔ the `release.yml` downloads table ↔ the README Install section.
+- **Boards:** `platformio.ini` envs ↔ `firmware.yml` (build + merge loop, the `cardputerzero` job) ↔ the `release.yml` downloads table ↔ the README Install section.
+- **CardputerZero:** `build.sh` takes the version from `FW_VERSION`; the `.desktop`, the icon and the `.deb` paths (`/usr/share/APPLaunch/...`) ↔ the README section. Its keys ↔ `platform.cpp` (`Keyboard::poll`) ↔ the README. The link timing mirrors `firmware/src/net.cpp` and `config.h`.
 - Record user-visible changes in `CHANGELOG.md` under `[Unreleased]`.
 
 ## Releases
@@ -175,7 +196,7 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - version bumped everywhere above.
 - Pushing the tag runs `release.yml`:
   - It reruns the firmware workflow.
-  - It publishes the release with `CrealityHiMonitor-<board>-merged.bin` (flash at 0x0) and `-app.bin` (0x10000), for `atoms3r` and `cores3`. The job fails if no `.bin` is found.
+  - It publishes the release with `CrealityHiMonitor-<board>-merged.bin` (flash at 0x0) and `-app.bin` (0x10000), for `atoms3r` and `cores3`, and the CardputerZero's `hm01-hi-monitor_<ver>_arm64.deb`. The job fails if a pattern matches no file.
   - The notes are the tag's CHANGELOG section; the job fails if that section is missing.
 - Commit and push only when the user asks; push straight to `main`.
 
@@ -206,4 +227,14 @@ docs/                    creality-websocket.md (protocol notes), img/ (generated
   - Only the IMU task reads `M5.Imu`. The internal I2C bus (touch, power chip, IMU) is locked per transaction in M5GFX's i2c layer, so the task on core 0 and the main loop can share it.
   - M5Unified does not remap the CoreS3's accel and gyro axes. Its z points out of the screen.
   - A finger tapping the screen shakes the device: moves within `kTouchQuietMs` of a touch are ignored, judged `kMoveJudgeMs` after they happen.
+- **CardputerZero (Linux, not ESP32):**
+  - The launcher (github.com/CardputerZero/launcher, `projects/APPLaunch`) loads `*.desktop` from `/usr/share/APPLaunch/applications`. `Exec` must be an absolute path to an executable with no shell metacharacters; `Icon` is relative to `/usr/share/APPLaunch` (`share/images/*_100.png`, 100 × 100 RGBA).
+  - It runs the app blocking and stops its own LVGL meanwhile ("External apps own the framebuffer exclusively"), then redraws.
+  - Build statically: WSL's Ubuntu 24.04 has a newer glibc than the device's Debian 12. Use numeric addresses: static glibc cannot load NSS for host names.
+  - `dpkg-deb` refuses a staging directory on a Windows drive (777 permissions): `build.sh` stages in `mktemp -d`.
+  - The working copy has CRLF: read `FW_VERSION` through `tr -d '\r'`.
+  - Docker Desktop did not start on this PC (2026-11-23); WSL as root works without a password.
+  - ALSA's default is HDMI there: `playMelody` picks the first card whose id has no "hdmi" (the ES8389 speaker).
+  - Installing a persistent SSH key on the device was refused by the permission classifier: use the password for the session only (`sshpass` in WSL), store it nowhere.
+  - The device can drop off Wi-Fi for a few minutes (it came back after ~3 min once).
 - **The Bash tool mangles quotes and `\n`** in heredocs and `sed`. Write patch scripts to a file and run them.

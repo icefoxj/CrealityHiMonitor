@@ -31,6 +31,7 @@ struct Box {
 // Where everything goes, for each orientation
 struct Geo {
     bool      portrait;
+    bool      wide;                      // 320 x 170: no tiles, hint or footer rows
     float     w, h;
     float     bandX1;                    // the title band's top-right corner
     bool      codeInHeader;              // the printer's code: header, or the bottom line
@@ -50,7 +51,7 @@ struct Geo {
 };
 
 const Geo kLand = {
-    false, 320.0f, 240.0f, 112.0f, true,
+    false, false, 320.0f, 240.0f, 112.0f, true,
     72.0f, 97.0f, 66.0f, 64.5f, 54.0f, 62.0f,
     {36.0f, 5.4f, 3.6f}, {15.0f, 2.3f, -1.0f},
     -32.0f, 15.0f, 23.5f, 39.0f,
@@ -65,7 +66,7 @@ const Geo kLand = {
 };
 
 const Geo kPort = {
-    true, 240.0f, 320.0f, 84.0f, false,
+    true, false, 240.0f, 320.0f, 84.0f, false,
     62.0f, 89.0f, 57.0f, 55.5f, 46.0f, 53.0f,
     {30.0f, 4.6f, 3.0f}, {13.0f, 2.0f, -1.0f},
     -27.0f, 13.0f, 20.5f, 34.0f,
@@ -77,6 +78,23 @@ const Geo kPort = {
     {4.0f, 154.0f, 236.0f, 272.0f}, {4.0f, 276.0f, 236.0f, 308.0f},
     14.0f, 27.0f,
     317.0f,
+};
+
+// CardputerZero, 320 x 170: the gauge at the left and one panel; the job's
+// details on a second page. No tile, hint or footer rows (y0 < 0).
+const Geo kWide = {
+    false, true, 320.0f, 170.0f, 112.0f, true,
+    60.0f, 99.0f, 57.0f, 55.5f, 46.0f, 53.0f,
+    {30.0f, 4.6f, 3.0f}, {13.0f, 2.0f, -1.0f},
+    -27.0f, 13.0f, 20.5f, 34.0f,
+    {124.0f, 30.0f, 316.0f, 166.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}, {-1.0f, -1.0f, -1.0f, -1.0f}, 0.0f, 0.0f,
+    -1.0f, -1.0f,
+    60.0f, 99.0f,
+    {124.0f, 30.0f, 316.0f, 166.0f}, {0.0f, -1.0f, 0.0f, -1.0f},
+    0.0f, 0.0f,
+    -1.0f,
 };
 
 const Geo* G = &kLand;              // the layout of the frame being drawn
@@ -619,6 +637,124 @@ void jobPanelPortrait(Canvas& cv, const View& v, const Look& lk){
     segBar(cv, b.x0 + 10.0f, b.x1 - 8.0f, b.y1 - 11.0f, 5.0f, 26, layerFrac(v), lk.c);
 }
 
+// CardputerZero: one panel right of the gauge. The ETA stays on top of
+// both pages; page 0 has the times and the machine, page 1 the job's
+// details. The end screens have one page.
+void jobWide(Canvas& cv, const View& v, const Look& lk){
+    const Box& b = G->panel;
+    panel(cv, b, 10.0f, lk.c);
+    const float x0 = b.x0 + 10.0f, x1 = b.x1 - 8.0f;
+    const bool end = ended(v.screen);
+    const Details& d = v.d;
+    char a[24];
+
+    text(cv, end ? "ENDED" : "ETA", x0, 43.0f, kSmall, lk.c);
+    text(cv, v.eta[0] ? v.eta : "--:--", x0, 73.0f, kBig, pal::text);
+    duration(end ? v.elapsedS : v.remainingS, a, sizeof(a));
+    field(cv, x1, 43.0f, 73.0f, end ? "TIME" : "LEFT", lk.c, a, kVal, Align::Right);
+    rule(cv, x0, x1, 82.5f, lk.c);
+
+    struct Cell {
+        const char* label;
+        Color       lc;
+        char        value[24];
+    };
+    Cell cell[9];
+    for (Cell& k : cell){
+        k.label = "";
+        k.lc = pal::mid;
+        k.value[0] = 0;
+    }
+    auto set = [&](int i, const char* label, const char* value, Color lc = pal::mid){
+        cell[i].label = label;
+        cell[i].lc = lc;
+        snprintf(cell[i].value, sizeof(cell[i].value), "%s", value);
+    };
+    char t[24];
+    bool jobRow = false;   // the third row is the job's name, full width
+    if (end){
+        orDash(d.start, t, sizeof(t), "--:--");  set(0, "START", t);
+        duration(d.sliceS, t, sizeof(t));        set(1, "SLICER", t);
+        metres(d.usedDm, t, sizeof(t));          set(2, "FILAMENT", t);
+        if (v.layers > 0) snprintf(t, sizeof(t), "%d", v.layers); else snprintf(t, sizeof(t), "--");
+        set(3, "LAYERS", t);
+        orDash(d.material, t, sizeof(t));        set(4, "MATERIAL", t);
+        if (v.screen == Screen::Error && v.errorCode != 0) snprintf(t, sizeof(t), "%d", v.errorCode);
+        else snprintf(t, sizeof(t), "--");
+        set(5, "CODE", t, v.screen == Screen::Error ? pal::red : pal::mid);
+        jobRow = true;
+    } else if (v.page == 0){
+        duration(v.elapsedS, t, sizeof(t));      set(0, "TIME", t);
+        duration(d.totalS, t, sizeof(t));        set(1, "TOTAL", t);
+        orDash(d.start, t, sizeof(t), "--:--");  set(2, "START", t);
+        if (v.layers > 0 && v.layer >= 0) snprintf(t, sizeof(t), "%d/%d", v.layer, v.layers);
+        else snprintf(t, sizeof(t), "--");
+        set(3, "LAYER", t);
+        if (d.z100 >= 0) snprintf(t, sizeof(t), "%d.%02d", d.z100 / 100, d.z100 % 100);
+        else snprintf(t, sizeof(t), "--");
+        set(4, "Z MM", t);
+        pct(d.filePct, t, sizeof(t));            set(5, "FILE", t);
+        temp(v.nozzle, t, sizeof(t));            set(6, "NOZZLE", t);
+        temp(v.bed, t, sizeof(t));               set(7, "BED", t);
+        if (d.speed >= 0) snprintf(t, sizeof(t), "%d", d.speed); else snprintf(t, sizeof(t), "--");
+        set(8, "MM/S", t);
+    } else {
+        if (d.flow10 >= 0) snprintf(t, sizeof(t), "%d.%d", d.flow10 / 10, d.flow10 % 10);
+        else snprintf(t, sizeof(t), "--");
+        set(0, "MM3/S", t);
+        if (d.fanPart >= 0) snprintf(t, sizeof(t), "%d/%d/%d", d.fanPart, d.fanAux < 0 ? 0 : d.fanAux,
+                                     d.fanCase < 0 ? 0 : d.fanCase);
+        else snprintf(t, sizeof(t), "--");
+        set(1, "FANS %", t);
+        metres(d.usedDm, t, sizeof(t));          set(2, "FILAMENT", t);
+        if (d.feedPct >= 0 || d.flowPct >= 0) snprintf(t, sizeof(t), "%d/%d", d.feedPct, d.flowPct);
+        else snprintf(t, sizeof(t), "--");
+        set(3, "SPD/FLW %", t);
+        duration(d.sliceS, t, sizeof(t));        set(4, "SLICER", t);
+        // The heaters' targets (nozzle/bed), or the chamber where there is one
+        if (d.chamber > -1000){
+            temp(d.chamber, t, sizeof(t));
+            set(5, "CHAMBER", t);
+        } else {
+            if (d.nozzleTarget > -1000 && d.bedTarget > -1000)
+                snprintf(t, sizeof(t), "%d/%d", d.nozzleTarget, d.bedTarget);
+            else snprintf(t, sizeof(t), "--");
+            set(5, "SET \xB0" "C", t);
+        }
+        jobRow = true;
+    }
+
+    const float cx[3] = {x0, x0 + 62.0f, x0 + 124.0f};
+    const float lab[3] = {95.0f, 121.0f, 147.0f}, val[3] = {108.0f, 134.0f, 160.0f};
+    for (int i = 0; i < (jobRow ? 6 : 9); i++){
+        if (cell[i].label[0]){
+            field(cv, cx[i % 3], lab[i / 3], val[i / 3], cell[i].label, cell[i].lc, cell[i].value, kValS);
+        }
+    }
+    if (jobRow){
+        // The job's name across the panel, the material after it
+        text(cv, "JOB", x0, lab[2], kLab, pal::mid);
+        const float matW = d.material[0] ? textWidth(d.material, kValS) + 8.0f : 0.0f;
+        char name[32];
+        fit(d.job[0] ? d.job : "--", kValS, x1 - x0 - matW, name, sizeof(name));
+        text(cv, name, x0, val[2], kValS, pal::text);
+        if (d.material[0]){
+            text(cv, d.material, x0 + textWidth(name, kValS) + 8.0f, val[2], kValS, lk.c);
+        }
+    }
+}
+
+// Two small marks under the gauge: which page is showing
+void pageMarks(Canvas& cv, int page, Color accent){
+    for (int i = 0; i < 2; i++){
+        cv.begin(i == page ? accent : pal::dim);
+        const float x = s_gx - 9.0f + 11.0f * i;
+        const Vec p[4] = {V(x + 2.0f, 162.0f), V(x + 9.0f, 162.0f), V(x + 7.0f, 165.0f), V(x, 165.0f)};
+        cv.poly(p, 4);
+        cv.end();
+    }
+}
+
 // ---------------------------------------------------------------- tiles
 
 // Offsets inside a tile: the full height (44) or the compact one
@@ -791,6 +927,9 @@ void infoPanel(Canvas& cv, const Look& lk, const char* l1, const char* v1, const
 // A wide panel with hazard stripes and a two-line hint
 void hintPanel(Canvas& cv, const Look& lk, const char* hint1, const char* hint2){
     const Box& b = G->hint;
+    if (b.y1 <= 0.0f){
+        return;   // the wide layout has no room for it
+    }
     panel(cv, b, 7.0f, lk.c);
     const float top = b.y0 + 0.5f * (b.y1 - b.y0 - 24.0f);
     cv.begin(lk.c);
@@ -810,6 +949,9 @@ void hintPanel(Canvas& cv, const Look& lk, const char* hint1, const char* hint2)
 }
 
 void footer(Canvas& cv, const View& v, const char* left){
+    if (G->foot < 0.0f){
+        return;
+    }
     char s[24];
     snprintf(s, sizeof(s), "HM-01 %s", v.version);
     const char* right = v.version[0] ? s : "HM-01";
@@ -836,7 +978,7 @@ void splashScreen(Canvas& cv, const View& v, const Look& lk){
     text(cv, "HM-01", x0, b.y0 + 50.0f * k, kBig, pal::text);
     rule(cv, x0, b.x1 - 8.0f, b.y0 + 62.5f * k, lk.c);
     text(cv, "HI MONITOR", x0, b.y0 + 84.0f * k, kVal, pal::text);
-    text(cv, "M5STACK CORES3", x0, b.y0 + 104.0f * k, kSmall, pal::mid);
+    text(cv, G->wide ? "M5STACK CARDPUTERZERO" : "M5STACK CORES3", x0, b.y0 + 104.0f * k, kSmall, pal::mid);
     text(cv, v.version, x0, b.y0 + 120.0f * k, kSmall, lk.c);
     hintPanel(cv, lk, "LIVE STATUS OF A CREALITY HI", "PORT 9999 - NO PC IN BETWEEN");
     footer(cv, v, "");
@@ -901,6 +1043,17 @@ void idleScreen(Canvas& cv, const View& v, const Look& lk){
     field(cv, x0, y + 71.0f, y + 85.0f, "PRINTER", pal::mid, a, kValS);
     orDash(d.model, a, sizeof(a));
     field(cv, x0 + (G->portrait ? 110.0f : 104.0f), y + 71.0f, y + 85.0f, "MODEL", pal::mid, a, kValS);
+    if (G->wide){
+        // No tile row: the temperatures go in the panel
+        char nz[12], bd[12];
+        temp(v.nozzle, nz, sizeof(nz));
+        temp(v.bed, bd, sizeof(bd));
+        field(cv, x0, y + 99.0f, y + 113.0f, "NOZZLE", pal::mid, nz, kValS);
+        field(cv, x0 + 62.0f, y + 99.0f, y + 113.0f, "BED", pal::mid, bd, kValS);
+        orDash(d.ip, a, sizeof(a));
+        field(cv, x0 + 124.0f, y + 99.0f, y + 113.0f, "ADDRESS", pal::mid, a, kLab);
+        return;
+    }
     if (!G->portrait){
         orDash(d.ip, a, sizeof(a));
         field(cv, x0, y + 99.0f, y + 113.0f, "HM-01 ADDRESS", pal::mid, a, kValS);
@@ -930,8 +1083,16 @@ void idleScreen(Canvas& cv, const View& v, const Look& lk){
 
 }  // namespace
 
-void drawDash(Canvas& cv, const View& v, int top, bool portrait){
-    G = portrait ? &kPort : &kLand;
+int dashWidth(DashLayout l){
+    return l == DashLayout::Portrait ? kDashH : kDashW;
+}
+
+int dashHeight(DashLayout l){
+    return l == DashLayout::Portrait ? kDashW : (l == DashLayout::Wide ? kWideH : kDashH);
+}
+
+void drawDash(Canvas& cv, const View& v, int top, DashLayout layout){
+    G = layout == DashLayout::Portrait ? &kPort : (layout == DashLayout::Wide ? &kWide : &kLand);
     cv.clear(pal::bezel);
     Xform x = Xform::identity();
     x.oy = static_cast<float>(-top);
@@ -956,6 +1117,13 @@ void drawDash(Canvas& cv, const View& v, int top, bool portrait){
         case Screen::Stopped:
         case Screen::Error:
             jobGauge(cv, v, lk);
+            if (G->wide){
+                jobWide(cv, v, lk);
+                if (!ended(v.screen)){
+                    pageMarks(cv, v.page, lk.c);
+                }
+                break;
+            }
             if (G->portrait){
                 jobSide(cv, v, lk);
                 jobPanelPortrait(cv, v, lk);

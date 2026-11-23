@@ -16,6 +16,8 @@ venv/
 *.log
 out/
 dist/
+cardputerzero/build/
+*.deb
 
 # Editors / OS
 .vscode/

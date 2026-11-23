@@ -27,6 +27,10 @@ jobs:
         with:
           name: CrealityHiMonitor-firmware
           path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: CrealityHiMonitor-cardputerzero
+          path: dist
       - name: Release notes from CHANGELOG.md
         id: notes
         run: |
@@ -51,12 +55,17 @@ jobs:
           | `CrealityHiMonitor-atoms3r-app.bin` | AtomS3R, the application only: write it at `0x10000` over an existing install (keeps the settings) |
           | `CrealityHiMonitor-cores3-merged.bin` | firmware for the M5Stack CoreS3 (320 x 240 dashboard), full image: write it at `0x0` |
           | `CrealityHiMonitor-cores3-app.bin` | CoreS3, the application only: write it at `0x10000` |
+          | `hm01-hi-monitor_<ver>_arm64.deb` | the M5Stack CardputerZero app (Debian arm64): adds HM-01 to its launcher menu |
 
           Flash: `esptool.py --chip esp32s3 write_flash 0x0 CrealityHiMonitor-<board>-merged.bin`
+
+          CardputerZero: copy the `.deb` to the device and run `sudo dpkg -i hm01-hi-monitor_<ver>_arm64.deb`.
           EOF
       - uses: softprops/action-gh-release@v3
         with:
           name: CrealityHiMonitor ${{ steps.notes.outputs.ver }}
           body_path: notes.md
-          files: dist/*.bin
+          files: |
+            dist/*.bin
+            dist/*.deb
           fail_on_unmatched_files: true
